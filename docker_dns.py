@@ -214,9 +214,9 @@ def main():
 
     # Create docker
     if CONFIG['docker_url']:
-        docker_client = docker.Client(CONFIG['docker_url'])
+        docker_client = docker.Client(CONFIG['docker_url'], CONFIG['version'])
     else:
-        docker_client = docker.Client()
+        docker_client = docker.Client(CONFIG['version'])
 
     # Create our custom mapping and resolver
     mapping = DockerMapping(docker_client)
@@ -258,6 +258,7 @@ except ImportError:
 # Merge user config over defaults
 DEFAULT_CONFIG = {
     'docker_url': None,
+    'version': '1.11',
     'bind_interface': '',
     'bind_port': 53,
     'bind_protocols': ['tcp', 'udp'],
