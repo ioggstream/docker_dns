@@ -26,37 +26,12 @@ from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import failure
 from warnings import warn
 
-
-# FIXME replace with a more generic solution like operator.attrgetter
-def dict_lookup(dic, key_path, default=None):
-    """
-    Look up value in a nested dict
-
-    Args:
-        dic: The dictionary to search
-        key_path: An iterable containing an ordered list of dict keys to
-                  traverse
-        default: Value to return in case nothing is found
-
-    Returns:
-        Value of the dict at the nested location given, or default if no value
-        was found
-    """
-
-    for k in key_path:
-        if k in dic:
-            dic = dic[k]
-        else:
-            return default
-    return dic
-
-
 class DockerMapping(object):
     """
     Look up docker container data
     """
 
-    id_re = re.compile(r'([a-z0-9]+)\.docker')
+    id_re = re.compile(r'([a-z0-9]+)\.d')
 
     def __init__(self, api):
         """
@@ -65,29 +40,11 @@ class DockerMapping(object):
         """
 
         self.api = api
-
-    def _ids_from_prop(self, key_path, value):
-        """
-        Get IDs of containers where their config matches a value
-
-        Args:
-            key_path: An iterable containing an ordered list of container
-                      config keys to traverse
-            value: What the value at key_path must match to qualify
-
-        Returns:
-            Generator with a list of containers that match the config value
-        """
-
-        return (
-            c['ID']
-            for c in (
-                self.api.inspect_container(c_lite['Id'])
-                for c_lite in self.api.containers(all=True)
-            )
-            if dict_lookup(c, key_path, None) == value
-            if 'ID' in c
-        )
+        try:
+            print('connected to docker instance running api version %s' % \
+                    self.api.version()['ApiVersion'])
+        except docker.client.APIError as ex:
+            raise Exception(ex)
 
     def lookup_container(self, name):
         """
@@ -100,31 +57,27 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
+        key_path = 'Name'
+        warn(name)
 
-        match = self.id_re.match(name)
-        if match:
-            container_id = match.group(1)
-        else:
-            ids = self._ids_from_prop(('Config', 'Hostname'), unicode(name))
-            # FIXME Should be able to support multiple
-            try:
-                container_id = ids.next()
-            except StopIteration:
-                return None
+        cid_all = [ c['Id'] for c in self.api.containers(all=True) ]
+        print(cid_all)
 
-        try:
-            return self.api.inspect_container(container_id)
+        for cid in cid_all:
+            warn(cid)
+            cdic = self.api.inspect_container(cid_all['Id'])
+            warn(cdic[key_path])
+            if cdic[key_path] == name:
+                container_id = cdic[key_path]
+            else:
+                container_id = None
+            warn(container_id)
 
-        except docker.client.APIError as ex:
-            # 404 is valid, others aren't
-            if ex.response.status_code != 404:
-                warn(ex)
-
-            return None
-
-        except RequestException as ex:
-            warn(ex)
-            return None
+#        try:
+        return self.api.inspect_container(container_id)
+#        except RequestException as ex:
+#            warn(ex)
+#            return None
 
     def get_a(self, name):
         """
@@ -138,6 +91,8 @@ class DockerMapping(object):
         """
 
         container = self.lookup_container(name)
+        print 'container:'
+        print(container)
 
         if container is None:
             return None
@@ -181,6 +136,7 @@ class DockerResolver(common.ResolverBase):
         """
 
         addr = self.mapping.get_a(name)
+        print addr
         if not addr:
             raise DomainError(name)
 
@@ -191,21 +147,11 @@ class DockerResolver(common.ResolverBase):
         ])
 
     def lookupAddress(self, name, timeout=None):
-        try:
-            records = self._a_records(name)
-            return defer.succeed((records, (), ()))
-
-        # We need to catch everything. Uncaught exceptian will make the server
-        # stop responding
-        except:  # pylint:disable=bare-except
-            if CONFIG['no_nxdomain']:
-                # FIXME surely there's a better way to give SERVFAIL
-                exception = DNSQueryTimeoutError(name)
-            else:
-                exception = DomainError(name)
-
-            return defer.fail(failure.Failure(exception))
-
+        print('attempting lookup')
+        records = self._a_records(name)
+        print('records')
+        print(records)
+        return defer.succeed((records, (), ()))
 
 def main():
     """
@@ -214,7 +160,7 @@ def main():
 
     # Create docker
     if CONFIG['docker_url']:
-        docker_client = docker.Client(CONFIG['docker_url'], version=CONFIG['version'])
+        docker_client = docker.Client(base_url=CONFIG['docker_url'], version=CONFIG['version'])
     else:
         docker_client = docker.Client(version=CONFIG['version'])
 
@@ -257,8 +203,8 @@ except ImportError:
 
 # Merge user config over defaults
 DEFAULT_CONFIG = {
-    'docker_url': None,
-    'version': '1.11',
+    'docker_url': 'unix://var/run/docker.sock',
+    'version': '1.13',
     'bind_interface': '',
     'bind_port': 53,
     'bind_protocols': ['tcp', 'udp'],
