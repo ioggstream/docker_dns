@@ -5,18 +5,16 @@ A simple TwistD DNS server using custom TLD and Docker as the back end for IP
 resolution.
 
 To look up a container:
- - 'A' record query container's hostname with no TLD. Must be an exact match
- - 'A' record query an ID that will match a container with a docker inspect
-   command with '.docker' as the TLD. eg: 0949efde23b.docker
+ - 'A' record query a container NAME that will match a container with a docker inspect
+   command with '.d' as the TLD. eg: mysql_server1.d
 
-Code heavily modified from
-http://stackoverflow.com/a/4401671/509043
+Code modified from 
+https://github.com/infoxchange/docker_dns
 
-Author: Ricky Cook <ricky@infoxchange.net.au>
+Author: Bradley Cicenas <bradley@townsquaredigital.com>
 """
 
 import docker
-import re
 
 from requests.exceptions import RequestException
 from twisted.application import internet, service
