@@ -31,8 +31,6 @@ class DockerMapping(object):
     Look up docker container data
     """
 
-    id_re = re.compile(r'([a-z0-9]+)\.d')
-
     def __init__(self, api):
         """
         Args:
@@ -58,23 +56,34 @@ class DockerMapping(object):
             Container config dict for the first matching container
         """
         key_path = 'Name'
-        warn(name)
+        name = name.strip('.d')
 
         cid_all = [ c['Id'] for c in self.api.containers(all=True) ]
 
         for cid in cid_all:
-            warn(cid)
             cdic = self.api.inspect_container(cid)
-            if cdic[key_path] == name:
+            cname = str(cdic[key_path].strip('/'))
+            if  cname == name:
                 container_id = cid
+                break
             else:
                 container_id = None
 
-#        try:
-        return self.api.inspect_container(container_id)
-#        except RequestException as ex:
-#            warn(ex)
-#            return None
+        print('container matching %s: %s' % (name, container_id))
+
+        try:
+            return self.api.inspect_container(container_id)
+
+        except docker.errors.APIError as ex:
+            # 404 is valid, others aren't
+            if ex.response.status_code != 404:
+                warn(ex)
+            return None
+
+        except RequestException as ex:
+            warn(ex)
+            return None
+
 
     def get_a(self, name):
         """
@@ -88,8 +97,6 @@ class DockerMapping(object):
         """
 
         container = self.lookup_container(name)
-        print 'container:'
-        print(container)
 
         if container is None:
             return None
@@ -133,7 +140,6 @@ class DockerResolver(common.ResolverBase):
         """
 
         addr = self.mapping.get_a(name)
-        print addr
         if not addr:
             raise DomainError(name)
 
@@ -144,11 +150,21 @@ class DockerResolver(common.ResolverBase):
         ])
 
     def lookupAddress(self, name, timeout=None):
-        print('attempting lookup')
-        records = self._a_records(name)
-        print('records')
-        print(records)
-        return defer.succeed((records, (), ()))
+        try:
+            records = self._a_records(name)
+            return defer.succeed((records, (), ()))
+
+        # We need to catch everything. Uncaught exceptian will make the server
+        # stop responding
+        except:  # pylint:disable=bare-except
+            if CONFIG['no_nxdomain']:
+                # FIXME surely there's a better way to give SERVFAIL
+                exception = DNSQueryTimeoutError(name)
+            else:
+                exception = DomainError(name)
+
+            return defer.fail(failure.Failure(exception))
+
 
 def main():
     """
