@@ -61,17 +61,14 @@ class DockerMapping(object):
         warn(name)
 
         cid_all = [ c['Id'] for c in self.api.containers(all=True) ]
-        print(cid_all)
 
         for cid in cid_all:
             warn(cid)
-            cdic = self.api.inspect_container(cid_all['Id'])
-            warn(cdic[key_path])
+            cdic = self.api.inspect_container(cid)
             if cdic[key_path] == name:
-                container_id = cdic[key_path]
+                container_id = cid
             else:
                 container_id = None
-            warn(container_id)
 
 #        try:
         return self.api.inspect_container(container_id)
