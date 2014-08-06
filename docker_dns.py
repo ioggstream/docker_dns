@@ -39,7 +39,7 @@ class DockerMapping(object):
         try:
             print('connected to docker instance running api version %s' % \
                     self.api.version()['ApiVersion'])
-        except docker.client.APIError as ex:
+        except docker.errors.APIError as ex:
             raise Exception(ex)
 
     def lookup_container(self, name):
