@@ -171,9 +171,9 @@ def main():
 
     # Create docker
     if CONFIG['docker_url']:
-        docker_client = docker.Client(base_url=CONFIG['docker_url'], version=CONFIG['version'])
+        docker_client = docker.Client(base_url=CONFIG['docker_url'], version=CONFIG['version'], timeout=30)
     else:
-        docker_client = docker.Client(version=CONFIG['version'])
+        docker_client = docker.Client(version=CONFIG['version'], timeout=30)
 
     # Create our custom mapping and resolver
     mapping = DockerMapping(docker_client)
