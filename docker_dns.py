@@ -217,7 +217,7 @@ DEFAULT_CONFIG = {
     'docker_url': 'unix://var/run/docker.sock',
     'version': '1.13',
     'bind_interface': '',
-    'bind_port': 53,
+    'bind_port': 53000,
     'bind_protocols': ['tcp', 'udp'],
     'no_nxdomain': True,
     'authoritive': True,
