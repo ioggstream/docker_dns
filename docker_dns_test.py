@@ -16,8 +16,8 @@ import fudge
 import itertools
 import unittest
 
+from utils import traverse_tree
 from docker_dns import (DEFAULT_CONFIG,
-                        dict_lookup,
                         DockerMapping,
                         DockerResolver)
 from twisted.names import dns
@@ -145,7 +145,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_basic_one(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['pandas', 'and']
             ),
@@ -154,7 +154,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_basic_two(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['foxes', 'are']
             ),
@@ -163,7 +163,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_basic_none(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['badgers', 'are'],
                 'Badgers are none? What?'
@@ -173,7 +173,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_dict(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['foxes']
             ),
@@ -182,7 +182,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_default_single_depth(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['nothing']
             ),
@@ -191,7 +191,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_user_default_single_depth(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['nothing'],
                 'Nobody here but us chickens'
@@ -201,7 +201,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_default_multi_depth(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['pandas', 'bad']
             ),
@@ -210,7 +210,7 @@ class DictLookupTest(unittest.TestCase):
 
     def test_user_default_multi_depth(self):
         self.assertEqual(
-            dict_lookup(
+            traverse_tree(
                 self.theDict,
                 ['pandas', 'bad'],
                 'NO, THAT\'S A DAMN DIRTY LIE'

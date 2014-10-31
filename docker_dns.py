@@ -29,9 +29,10 @@ from twisted.names import common, dns, server
 from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import failure, log
 
+from utils import get_preferred_ip, memoize
 
 # Merge user config over defaults
-CONFIG = {
+CONFIG = DEFAULT_CONFIG = {
     'docker_url': 'unix://var/run/docker.sock',
     'version': '1.13',
     'bind_interface': '',
@@ -41,79 +42,12 @@ CONFIG = {
     'authoritive': True,
 }
 
-# FIXME replace with a more generic solution like operator.attrgetter
-
-
-def dict_lookup(dic, key_path, default=None):
-    """
-    Look up value in a nested dict
-
-    Args:
-        dic: The dictionary to search
-        key_path: An iterable containing an ordered list of dict keys to
-                  traverse
-        default: Value to return in case nothing is found
-    Returns:
-        Value of the dict at the nested location given, or default if no value
-        was found
-    """
-    for k in key_path:
-        if k in dic:
-            dic = dic[k]
-        else:
-            return default
-    return dic
-
-
-def get_preferred_ip():
-    """Return the ip associated to the default gw"""
-    import socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # connecting to a UDP address doesn't send packets
-    s.connect(('8.8.8.8', 0))
-    return s.getsockname()[0]
-
-
-from functools import partial
-class memoize(object):
-
-    """cache the return value of a method
-
-    This class is meant to be used as a decorator of methods. The return value
-    from a given method invocation will be cached on the instance whose method
-    was invoked. All arguments passed to a method decorated with memoize must
-    be hashable.
-
-    If a memoized method is invoked directly on its class the result will not
-    be cached. Instead the method will be invoked like a static method:
-    class Obj(object):
-        @memoize
-        def add_to(self, arg):
-            return self + arg
-    Obj.add_to(1) # not enough arguments
-    Obj.add_to(1, 2) # returns 3, result is not cached
-    """
-
-    def __init__(self, func):
-        self.func = func
-
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self.func
-        return partial(self, obj)
-
-    def __call__(self, *args, **kw):
-        obj = args[0]
-        try:
-            cache = obj.__cache
-        except AttributeError:
-            cache = obj.__cache = {}
-        key = (self.func, args[1:], frozenset(kw.items()))
-        try:
-            res = cache[key]
-        except KeyError:
-            res = cache[key] = self.func(*args, **kw)
-        return res
+# Load the config
+try:
+    from config import CONFIG as appcfg  # pylint:disable=no-name-in-module,import-error
+    CONFIG.update(appcfg)
+except ImportError:
+    appcfg = {}
 
 
 class DockerMapping(object):
@@ -138,7 +72,7 @@ class DockerMapping(object):
             log.err("Cannot instantiate docker api")
             raise ex
 
-    #@memoize
+    @memoize
     def lookup_container(self, name):
         """
         Gets the container config from a DNS lookup name, or returns None if
@@ -150,8 +84,6 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
-        assert self.api
-
         key_path = 'Name'
         name = name.strip('.d')
         log.msg('lookup container: %r' % name)
@@ -162,14 +94,15 @@ class DockerMapping(object):
 
             for cid in cid_all:
                 cdic = self.api.inspect_container(cid)
-                cname = str(cdic[key_path].strip('/'))
+                # as container names starts with "/" we should strip it
+                cname = str(cdic[key_path].strip('/')) 
                 if cname == name:
                     container_id = cid
                     break
                 else:
                     container_id = None
 
-                print('container matching %s: %s' % (name, container_id))
+                log.msg('container matching %s: %s' % (name, container_id))
 
             return self.api.inspect_container(container_id)
 
@@ -208,8 +141,9 @@ class DockerMapping(object):
 
         return addr
 
+    #@memoize
     def get_nat(self, container_name, sport=0, sproto=None):
-        """ @return - a list of natted maps (local, nat, ip)
+        """ @return - a generator of natted maps (local, nat, ip)
 
             @param sport: the port to search
             @param sproto: the protocol to search
@@ -243,13 +177,22 @@ class DockerMapping(object):
 
 # pylint:disable=too-many-public-methods
 class DockerResolver(common.ResolverBase):
-
     """
     DNS resolver to resolve queries with a DockerMapping instance.
 
     Twisted Names just uses the lookupXXX method
     """
-
+    mock_records = [dns.RRHeader(
+            "mock_name", dns.SRV, dns.IN, 86400,
+                        dns.Record_SRV(
+                            priority=100, weight=100, port=19999, target='name', ttl=None),
+                        auth=True),
+                        dns.RRHeader(
+            "mock_name", dns.SRV, dns.IN, 86400,
+                        dns.Record_SRV(
+                            priority=100, weight=100, port=18080, target='name', ttl=None),
+                        auth=True)
+                        ]
     def __init__(self, mapping):
         """
         Args:
@@ -262,6 +205,7 @@ class DockerResolver(common.ResolverBase):
         # super(DockerResolver, self).__init__()
         common.ResolverBase.__init__(self)
         self.ttl = 10
+        self.my_preferred_ip = get_preferred_ip()
 
     def _a_records(self, name):
         """
@@ -299,7 +243,7 @@ class DockerResolver(common.ResolverBase):
 
         # We need to catch everything. Uncaught exceptian will make the server
         # stop responding
-        except DomainError as e0:
+        except DomainError as e:
             log.err()
             return defer.fail(failure.Failure(e))
         except Exception as e:  # pylint:disable=bare-except
@@ -327,6 +271,7 @@ class DockerResolver(common.ResolverBase):
                   The third element of the tuple gives additional information.
                   The Deferred may instead fail with one of the exceptions defined in twisted.names.error or with NotImplementedError. (type: Deferred)
         """
+        #return defer.succeed((self.mock_records, (), ()))
         if not name.endswith(".docker"):
             log.err("Domain not ending with .docker: %r" % name)
             return defer.fail(failure.Failure(DomainError("not ending with docker")))
@@ -337,23 +282,10 @@ class DockerResolver(common.ResolverBase):
             log.err("Domain not of the right form: %r" % name)
             return defer.fail(failure.Failure(DomainError("not of the right form")))
 
-        my_preferred_ip = get_preferred_ip()
-        mock_records = [dns.RRHeader(
-            name, dns.SRV, dns.IN, self.ttl,
-                        dns.Record_SRV(
-                            priority=100, weight=100, port=19999, target='name', ttl=None),
-                        auth=True),
-                        dns.RRHeader(
-                        name, dns.SRV, dns.IN, self.ttl,
-                        dns.Record_SRV(
-                            priority=100, weight=100, port=18080, target='name', ttl=None),
-                        auth=True)
-                        ]
-
         records = [dns.RRHeader(
             name, dns.SRV, dns.IN, self.ttl,
                    dns.Record_SRV(
-                   priority=100, weight=100, port=c_nat_port, target=my_preferred_ip, ttl=None),
+                   priority=100, weight=100, port=c_nat_port, target=self.my_preferred_ip, ttl=None),
                    auth=True)
                    for c_port, protocol, c_nat_port, target
                    in self.mapping.get_nat(container)
@@ -410,12 +342,6 @@ def main():
 # This is the effective twisted application
 #
 
-# Load the config
-try:
-    from config import CONFIG as appcfg  # pylint:disable=no-name-in-module,import-error
-    CONFIG.update(appcfg)
-except ImportError:
-    appcfg = {}
 
 #
 # Run it with twisted... it should be named .tac, not .py

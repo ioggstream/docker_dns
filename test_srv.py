@@ -121,14 +121,6 @@ class Test(object):
         self.mapping.lookup_container = mock_lookup_container
         self.resolver = DockerResolver(self.mapping)
 
-    def test_srv(self):
-        dns.Record_SRV(priority=100, weight=100, port=123, target='', ttl=None)
-
-        mock_mapping = {}
-        resolver = DockerResolver(mock_mapping)
-        res = resolver.lookupService("_8888._tcp.jboss63.docker")
-        return res
-
     def test_nat_all(self):
         host, port = "foo.docker", 8080
         ret = self.mapping.get_nat(host, port)
