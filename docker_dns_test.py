@@ -17,7 +17,7 @@ import itertools
 import unittest
 
 from docker_dns import (DEFAULT_CONFIG,
-                        #                        dict_lookup,
+                        dict_lookup,
                         DockerMapping,
                         DockerResolver)
 from twisted.names import dns

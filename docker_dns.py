@@ -1,19 +1,22 @@
 #!/usr/bin/python
 #from __future__ import print_function, unicode_literals
-
-
-""" 
+"""
 A simple TwistD DNS server using custom TLD and Docker as the back end for IP
 resolution.
 
 To look up a container:
  - 'A' record query a container NAME that will match a container with a docker inspect
    command with '.d' as the TLD. eg: mysql_server1.d
+ - 'SRV' record query to _port._srv.container.docker will return the natted address.
+   eg. _3306._tcp.mysql_server1.docker returns 
+   _18080._tcp.compassionate_poincare.docker. 10 IN SRV 100 100 8080 192.168.42.126.
 
-Code modified from 
+
+Code modified from
 https://github.com/infoxchange/docker_dns
 
 Author: Bradley Cicenas <bradley@townsquaredigital.com>
+Author: Roberto Polli <robipolli@gmail.com>
 """
 
 import docker
@@ -26,6 +29,40 @@ from twisted.names import common, dns, server
 from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import failure, log
 
+
+# Merge user config over defaults
+CONFIG = {
+    'docker_url': 'unix://var/run/docker.sock',
+    'version': '1.13',
+    'bind_interface': '',
+    'bind_port': 53,
+    'bind_protocols': ['tcp', 'udp'],
+    'no_nxdomain': True,
+    'authoritive': True,
+}
+
+# FIXME replace with a more generic solution like operator.attrgetter
+
+
+def dict_lookup(dic, key_path, default=None):
+    """
+    Look up value in a nested dict
+
+    Args:
+        dic: The dictionary to search
+        key_path: An iterable containing an ordered list of dict keys to
+                  traverse
+        default: Value to return in case nothing is found
+    Returns:
+        Value of the dict at the nested location given, or default if no value
+        was found
+    """
+    for k in key_path:
+        if k in dic:
+            dic = dic[k]
+        else:
+            return default
+    return dic
 
 
 def get_preferred_ip():
@@ -41,12 +78,12 @@ from functools import partial
 class memoize(object):
 
     """cache the return value of a method
-    
+
     This class is meant to be used as a decorator of methods. The return value
     from a given method invocation will be cached on the instance whose method
     was invoked. All arguments passed to a method decorated with memoize must
     be hashable.
-    
+
     If a memoized method is invoked directly on its class the result will not
     be cached. Instead the method will be invoked like a static method:
     class Obj(object):
@@ -82,7 +119,7 @@ class memoize(object):
 class DockerMapping(object):
     """
     Look up docker container data via docker.api.
-    
+
     XXX Should it be dns-agnostic, and just a wrapper around docker.api
     """
 
@@ -139,12 +176,12 @@ class DockerMapping(object):
         except docker.errors.APIError as ex:
             # 404 is valid, others aren't
             if ex.response.status_code != 404:
-                warn(ex)
+                warn(str(ex))
             return None
 
         except RequestException as ex:
             log.err()
-            # warn(ex)
+            warn(str(ex))
             return None
 
     def get_a(self, name):
@@ -178,7 +215,7 @@ class DockerMapping(object):
             @param sproto: the protocol to search
 
             eg. [ (8080, 'tcp', 18080, '0.0.0.0'),
-                  (8787, 'tcp', 8787, '0.0.0.0'), 
+                  (8787, 'tcp', 8787, '0.0.0.0'),
                 ]
         """
         sport = int(sport)
@@ -209,7 +246,7 @@ class DockerResolver(common.ResolverBase):
 
     """
     DNS resolver to resolve queries with a DockerMapping instance.
-    
+
     Twisted Names just uses the lookupXXX method
     """
 
@@ -262,9 +299,14 @@ class DockerResolver(common.ResolverBase):
 
         # We need to catch everything. Uncaught exceptian will make the server
         # stop responding
+        except DomainError as e0:
+            log.err()
+            return defer.fail(failure.Failure(e))
         except Exception as e:  # pylint:disable=bare-except
+            import traceback
+            traceback.print_exc()
+
             if CONFIG['no_nxdomain']:
-                print("E stampala sta eccezione imbecille %r" % e)
                 log.err()
                 # FIXME surely there's a better way to give SERVFAIL
                 exception = DNSQueryTimeoutError(name)
@@ -277,13 +319,13 @@ class DockerResolver(common.ResolverBase):
         """ Lookup a docker natted service of
              the form: NATTEDPORT._tcp.CONTAINERNAME.docker.
              and returns a srv record of the for:
-             _service._proto.name. TTL class SRV priority weight port target. 
-             
+             _service._proto.name. TTL class SRV priority weight port target.
+
              @returns -    A Deferred which fires with a three-tuple of lists of twisted.names.dns.RRHeader instances.
-                  The first element of the tuple gives answers. 
-                  The second element of the tuple gives authorities. 
-                  The third element of the tuple gives additional information. 
-                  The Deferred may instead fail with one of the exceptions defined in twisted.names.error or with NotImplementedError. (type: Deferred)           
+                  The first element of the tuple gives answers.
+                  The second element of the tuple gives authorities.
+                  The third element of the tuple gives additional information.
+                  The Deferred may instead fail with one of the exceptions defined in twisted.names.error or with NotImplementedError. (type: Deferred)
         """
         if not name.endswith(".docker"):
             log.err("Domain not ending with .docker: %r" % name)
@@ -302,7 +344,7 @@ class DockerResolver(common.ResolverBase):
                             priority=100, weight=100, port=19999, target='name', ttl=None),
                         auth=True),
                         dns.RRHeader(
-            name, dns.SRV, dns.IN, self.ttl,
+                        name, dns.SRV, dns.IN, self.ttl,
                         dns.Record_SRV(
                             priority=100, weight=100, port=18080, target='name', ttl=None),
                         auth=True)
@@ -310,9 +352,9 @@ class DockerResolver(common.ResolverBase):
 
         records = [dns.RRHeader(
             name, dns.SRV, dns.IN, self.ttl,
-                        dns.Record_SRV(
-                            priority=100, weight=100, port=c_nat_port, target=my_preferred_ip, ttl=None),
-                        auth=True)
+                   dns.Record_SRV(
+                   priority=100, weight=100, port=c_nat_port, target=my_preferred_ip, ttl=None),
+                   auth=True)
                    for c_port, protocol, c_nat_port, target
                    in self.mapping.get_nat(container)
                    if c_port == port  # eventually filter
@@ -325,11 +367,11 @@ def main():
     Set everything up
     """
 
-    docker_client = docker.Client()
+    # Create docker: by default dict.get returns None on missing keys
+    docker_client = docker.Client(CONFIG.get('docker_url'))
 
     # Test docker connectivity before starting
-    print(docker_client.info())
-    print(docker_client.base_url)
+    log.msg("Connecting to docker instance: %r" % docker_client.info())
 
     # Create our custom mapping and resolver
     mapping = DockerMapping(docker_client)
@@ -342,17 +384,19 @@ def main():
     # Protocols to bind
     bind_list = []
     if 'tcp' in CONFIG['bind_protocols']:
-        bind_list.append((internet.TCPServer, factory))  # noqa pylint:disable=no-member
+        bind_list.append(
+            (internet.TCPServer, factory))  # noqa pylint:disable=no-member
 
     if 'udp' in CONFIG['bind_protocols']:
         proto = dns.DNSDatagramProtocol(factory)
         proto.noisy = False
-        bind_list.append((internet.UDPServer, proto))  # noqa pylint:disable=no-member
+        bind_list.append(
+            (internet.UDPServer, proto))  # noqa pylint:disable=no-member
 
     # Register the service
     ret = service.MultiService()
-    for (klass, arg) in bind_list:
-        svc = klass(
+    for (InternetServerKlass, arg) in bind_list:
+        svc = InternetServerKlass(
             CONFIG['bind_port'],
             arg,
             interface=CONFIG['bind_interface']
@@ -362,25 +406,22 @@ def main():
     # DO IT NOW
     ret.setServiceParent(service.IServiceCollection(application))
 
+#
+# This is the effective twisted application
+#
+
 # Load the config
 try:
-    from config import CONFIG  # pylint:disable=no-name-in-module,import-error
+    from config import CONFIG as appcfg  # pylint:disable=no-name-in-module,import-error
+    CONFIG.update(appcfg)
 except ImportError:
-    CONFIG = {}
+    appcfg = {}
 
-# Merge user config over defaults
-DEFAULT_CONFIG = {
-    'docker_url': 'unix://var/run/docker.sock',
-    'version': '1.13',
-    'bind_interface': '',
-    'bind_port': 53,
-    'bind_protocols': ['tcp', 'udp'],
-    'no_nxdomain': True,
-    'authoritive': True,
-}
-CONFIG = dict(DEFAULT_CONFIG.items() + CONFIG.items())
-
-application = service.Application('dnsserver', 1, 1)  # noqa pylint:disable=invalid-name
+#
+# Run it with twisted... it should be named .tac, not .py
+#
+application = service.Application(
+    'dnsserver', 1, 1)  # noqa pylint:disable=invalid-name
 main()
 
 
