@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-"""
+""" 
 A simple TwistD DNS server using custom TLD and Docker as the back end for IP
 resolution.
 
@@ -15,33 +15,93 @@ Author: Bradley Cicenas <bradley@townsquaredigital.com>
 """
 
 import docker
-
+from warnings import warn
+from socket import getfqdn
 from requests.exceptions import RequestException
+
 from twisted.application import internet, service
 from twisted.internet import defer
 from twisted.names import common, dns, server
 from twisted.names.error import DNSQueryTimeoutError, DomainError
-from twisted.python import failure
-from warnings import warn
+from twisted.python import failure, log
+
+from functools import partial
+
+
+def get_preferred_ip():
+    """Return the ip associated to the default gw"""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # connecting to a UDP address doesn't send packets
+    s.connect(('8.8.8.8', 0))
+    return s.getsockname()[0]
+
+
+class memoize(object):
+
+    """cache the return value of a method
+    
+    This class is meant to be used as a decorator of methods. The return value
+    from a given method invocation will be cached on the instance whose method
+    was invoked. All arguments passed to a method decorated with memoize must
+    be hashable.
+    
+    If a memoized method is invoked directly on its class the result will not
+    be cached. Instead the method will be invoked like a static method:
+    class Obj(object):
+        @memoize
+        def add_to(self, arg):
+            return self + arg
+    Obj.add_to(1) # not enough arguments
+    Obj.add_to(1, 2) # returns 3, result is not cached
+    """
+
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self.func
+        return partial(self, obj)
+
+    def __call__(self, *args, **kw):
+        obj = args[0]
+        try:
+            cache = obj.__cache
+        except AttributeError:
+            cache = obj.__cache = {}
+        key = (self.func, args[1:], frozenset(kw.items()))
+        try:
+            res = cache[key]
+        except KeyError:
+            res = cache[key] = self.func(*args, **kw)
+        return res
+
 
 class DockerMapping(object):
+
     """
-    Look up docker container data
+    Look up docker container data via docker.api.
+    
+    XXX Should it be dns-agnostic, and just a wrapper around docker.api
     """
 
-    def __init__(self, api):
+    def __init__(self, api=None):
         """
         Args:
             api: Docker Client instance used to do API communication
         """
 
-        self.api = api
+        self.api = api if api else docker.Client()
+        log.msg("DockerMapping pointing to %r" % self.api.base_url)
         try:
-            print('connected to docker instance running api version %s' % \
-                    self.api.version()['ApiVersion'])
+            print('connected to docker instance running api version %s' %
+                  self.api.version()['ApiVersion'])
         except docker.errors.APIError as ex:
-            raise Exception(ex)
+            log.err("Cannot instantiate docker api")
+            raise ex
 
+    #@memoize
     def lookup_container(self, name):
         """
         Gets the container config from a DNS lookup name, or returns None if
@@ -53,23 +113,27 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
+        assert self.api
+
         key_path = 'Name'
         name = name.strip('.d')
-
-        cid_all = [ c['Id'] for c in self.api.containers(all=True) ]
-
-        for cid in cid_all:
-            cdic = self.api.inspect_container(cid)
-            cname = str(cdic[key_path].strip('/'))
-            if  cname == name:
-                container_id = cid
-                break
-            else:
-                container_id = None
-
-        print('container matching %s: %s' % (name, container_id))
+        log.msg('lookup container: %r' % name)
 
         try:
+            cid_all = (c['Id'] for c in self.api.containers(all=True) if c)
+            log.msg('found containers: %r ' % cid_all)
+
+            for cid in cid_all:
+                cdic = self.api.inspect_container(cid)
+                cname = str(cdic[key_path].strip('/'))
+                if cname == name:
+                    container_id = cid
+                    break
+                else:
+                    container_id = None
+
+                print('container matching %s: %s' % (name, container_id))
+
             return self.api.inspect_container(container_id)
 
         except docker.errors.APIError as ex:
@@ -79,9 +143,9 @@ class DockerMapping(object):
             return None
 
         except RequestException as ex:
-            warn(ex)
+            log.err()
+            # warn(ex)
             return None
-
 
     def get_a(self, name):
         """
@@ -97,20 +161,56 @@ class DockerMapping(object):
         container = self.lookup_container(name)
 
         if container is None:
+            print("No container found")
             return None
 
         addr = container['NetworkSettings']['IPAddress']
 
-        if addr is '':
+        if not addr:
             return None
 
         return addr
 
+    def get_nat(self, container_name, sport=0, sproto=None):
+        """ @return - a list of natted maps (local, nat, ip)
+
+            @param sport: the port to search
+            @param sproto: the protocol to search
+
+            eg. [ (8080, 'tcp', 18080, '0.0.0.0'),
+                  (8787, 'tcp', 8787, '0.0.0.0'), 
+                ]
+        """
+        sport = int(sport)
+        container = self.lookup_container(container_name)
+        try:
+            for local, remote in container['NetworkSettings']['Ports'].items():
+                port, proto = local.split("/")
+                port = int(port)
+                if sport and sport != port:
+                    continue
+                if sproto and sproto != proto:
+                    continue
+                if not remote:
+                    continue
+
+                for r in remote:
+                    try:
+                        yield (port, proto, int(r['HostPort']), r['HostIp'])
+                    except (ValueError, KeyError) as e:
+                        log.err()
+                        continue
+        except KeyError as e:
+            log.err("Bad network information from docker")
+
 
 # pylint:disable=too-many-public-methods
 class DockerResolver(common.ResolverBase):
+
     """
     DNS resolver to resolve queries with a DockerMapping instance.
+    
+    Twisted Names just uses the lookupXXX method
     """
 
     def __init__(self, mapping):
@@ -147,6 +247,14 @@ class DockerResolver(common.ResolverBase):
                          CONFIG['authoritive'])
         ])
 
+    def _srv_records(self, name):
+        print("getting srv: %r" + name)
+        return tuple([
+            dns.RRHeader(name, dns.SRV, dns.IN, self.ttl,
+                         dns.Record_A(addr, self.ttl),
+                         CONFIG['authoritive'])
+        ])
+
     def lookupAddress(self, name, timeout=None):
         try:
             records = self._a_records(name)
@@ -154,8 +262,10 @@ class DockerResolver(common.ResolverBase):
 
         # We need to catch everything. Uncaught exceptian will make the server
         # stop responding
-        except:  # pylint:disable=bare-except
+        except Exception as e:  # pylint:disable=bare-except
             if CONFIG['no_nxdomain']:
+                print("E stampala sta eccezione imbecille %r" % e)
+                log.err()
                 # FIXME surely there's a better way to give SERVFAIL
                 exception = DNSQueryTimeoutError(name)
             else:
@@ -163,17 +273,63 @@ class DockerResolver(common.ResolverBase):
 
             return defer.fail(failure.Failure(exception))
 
+    def lookupService(self, name, timeout=None):
+        """ Lookup a docker natted service of
+             the form: NATTEDPORT._tcp.CONTAINERNAME.docker.
+             and returns a srv record of the for:
+             _service._proto.name. TTL class SRV priority weight port target. 
+             
+             @returns -    A Deferred which fires with a three-tuple of lists of twisted.names.dns.RRHeader instances.
+                  The first element of the tuple gives answers. 
+                  The second element of the tuple gives authorities. 
+                  The third element of the tuple gives additional information. 
+                  The Deferred may instead fail with one of the exceptions defined in twisted.names.error or with NotImplementedError. (type: Deferred)           
+        """
+        if not name.endswith(".docker"):
+            log.err("Domain not ending with .docker: %r" % name)
+            return defer.fail(failure.Failure(DomainError("not ending with docker")))
+        try:
+            port, proto, container, _ = name.split(".")
+            port = int(port.strip("_"))
+        except (IndexError, TypeError, ValueError) as e:
+            log.err("Domain not of the right form: %r" % name)
+            return defer.fail(failure.Failure(DomainError("not of the right form")))
+
+        my_preferred_ip = get_preferred_ip()
+        mock_records = [dns.RRHeader(
+            name, dns.SRV, dns.IN, self.ttl,
+                        dns.Record_SRV(
+                            priority=100, weight=100, port=19999, target='name', ttl=None),
+                        auth=True),
+                        dns.RRHeader(
+            name, dns.SRV, dns.IN, self.ttl,
+                        dns.Record_SRV(
+                            priority=100, weight=100, port=18080, target='name', ttl=None),
+                        auth=True)
+                        ]
+
+        records = [dns.RRHeader(
+            name, dns.SRV, dns.IN, self.ttl,
+                        dns.Record_SRV(
+                            priority=100, weight=100, port=c_nat_port, target=my_preferred_ip, ttl=None),
+                        auth=True)
+                   for c_port, protocol, c_nat_port, target
+                   in self.mapping.get_nat(container)
+                   if c_port == port  # eventually filter
+                   ]
+        return defer.succeed((records, (), ()))
+
 
 def main():
     """
     Set everything up
     """
 
-    # Create docker
-    if CONFIG['docker_url']:
-        docker_client = docker.Client(base_url=CONFIG['docker_url'], version=CONFIG['version'], timeout=30)
-    else:
-        docker_client = docker.Client(version=CONFIG['version'], timeout=30)
+    docker_client = docker.Client()
+
+    # Test docker connectivity before starting
+    print(docker_client.info())
+    print(docker_client.base_url)
 
     # Create our custom mapping and resolver
     mapping = DockerMapping(docker_client)

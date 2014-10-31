@@ -17,7 +17,7 @@ import itertools
 import unittest
 
 from docker_dns import (DEFAULT_CONFIG,
-                        dict_lookup,
+                        #                        dict_lookup,
                         DockerMapping,
                         DockerResolver)
 from twisted.names import dns
@@ -60,6 +60,7 @@ def check_deferred(deferred, success):
 
     status, result = completed[0]
     if status != success:
+        raise AssertionError("Expected: %r, got %r" % (success, result))
         return False
 
     return result

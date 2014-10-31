@@ -16,13 +16,14 @@ Just install from requirements (in a virtualenv if you'd like)
 
     pip install -r requirements.txt --use-mirrors
 
-That's it! To run, just
+That's it! To run, remember that you may need to set user/group ids on 
+the process
 
-    twistd -y docker_dns.py
+
+    sudo twistd -gdocker -y docker_dns.py
 
 This will start a DNS server on port 53 (default DNS port). To make this
-useful, you probably want to combine it with your regular DNS in something like
-Dnsmasq.
+useful, you probably want to combine it with your regular DNS in something like Dnsmasq.
 
 Examples
 --------
@@ -109,6 +110,13 @@ container:
     ;; Got answer:
     ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 12687
     ;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
+
+
+Nat discovery: you can discover natted ports with queries like this one
+
+    dig _8080._tcp.my-thing.docker srv
+    ;; ANSWER SECTION:
+    _8080._tcp.jboss631.docker. 10  IN      SRV     100 100 18080 192.168.204.17.
 
 Configuration
 -------------
