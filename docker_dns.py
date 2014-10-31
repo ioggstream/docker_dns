@@ -1,4 +1,6 @@
 #!/usr/bin/python
+#from __future__ import print_function, unicode_literals
+
 
 """ 
 A simple TwistD DNS server using custom TLD and Docker as the back end for IP
@@ -16,7 +18,6 @@ Author: Bradley Cicenas <bradley@townsquaredigital.com>
 
 import docker
 from warnings import warn
-from socket import getfqdn
 from requests.exceptions import RequestException
 
 from twisted.application import internet, service
@@ -25,7 +26,6 @@ from twisted.names import common, dns, server
 from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import failure, log
 
-from functools import partial
 
 
 def get_preferred_ip():
@@ -37,6 +37,7 @@ def get_preferred_ip():
     return s.getsockname()[0]
 
 
+from functools import partial
 class memoize(object):
 
     """cache the return value of a method
@@ -79,7 +80,6 @@ class memoize(object):
 
 
 class DockerMapping(object):
-
     """
     Look up docker container data via docker.api.
     
