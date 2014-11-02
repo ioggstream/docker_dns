@@ -3,12 +3,14 @@
 
 import socket
 def get_preferred_ip():
-    """Return the ip associated to the default gw"""
+    """Return the in-addr name associated to the 
+       ip used to contact the default gw"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # connecting to a UDP address doesn't send packets
         s.connect(('8.8.8.8', 0))
-        return s.getsockname()[0]
+        ip = s.getsockname()[0]
+        return '.'.join(list(reversed(s.getsockname()[0].split(".")))) + ".in-addr.arpa"
     except Exception as e:
         return socket.getfqdn()
 
