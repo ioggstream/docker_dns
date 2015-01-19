@@ -11,8 +11,6 @@ from twisted.internet.protocol import Protocol, ReconnectingClientFactory
 from twisted.application import service, internet
 from twisted.python import log
 
-agent1 = Agent(reactor)
-agent2 = Agent(reactor, HTTPConnectionPool(reactor))
 
 
 class UpdateDB(Protocol):
@@ -61,17 +59,19 @@ class UpdateDB(Protocol):
 
 class UpdateDockerMapping(Protocol):
     """Parse docker events and update item store"""
-    def __init__(self, agent):
+    def __init__(self, agent, config):
+        self.agent = agent
+        self.config = config
+
         self.remaining = 1024 * 10
         self.buff = ""
-        self.agent = agent
 
     def update_record(self, item):
         """Update docker mapping
             item = {'status': ..., 'id': ...}
         """
         d = self.agent.request('GET',
-                               os.path.join(CONFIG['docker_url'],
+                               os.path.join(self.config['docker_url'],
                                             'containers', item['id'], 'json')
                                )
         d.addCallback(
@@ -107,16 +107,25 @@ class UpdateDockerMapping(Protocol):
 
 class EventFactory(ReconnectingClientFactory):
     # protocol = UpdateDockerMapping
+    agent = Agent(reactor)
+    agent2 = Agent(reactor, HTTPConnectionPool(reactor))
 
-    def __init__(self, agent, db=UpdateDB):
+    def __init__(self, config, db=UpdateDB):
         log.msg("Initializing factory")
-        self.agent = agent
         self.db = db
+        #
+        # Create a protocol handler to parse docker container data
+        #
+        self.dockerUpdater = UpdateDockerMapping(agent=self.agent2, config=config)
+
+        #
+        # Poll to the docker event interface
+        #
         d = self.agent.request(
             'GET',
-            os.path.join(CONFIG['docker_url'], 'events'),
-            Headers({'User-Agent': ['Twisted Web Client Example'],
-                     'Content-Type': ['text/x-greeting']}),
+            os.path.join(config['docker_url'], 'events'),
+            Headers({'User-Agent': ['Twisted Web Client for Docker Event'],
+                     'Content-Type': ['application/json']}),
             None)
         d.addCallbacks(self.cbResponse, lambda failure: print(str(failure)))
 
@@ -124,16 +133,14 @@ class EventFactory(ReconnectingClientFactory):
         try:
             log.msg('Response received: %r' % response)
             finished = Deferred()
-            response.deliverBody(UpdateDockerMapping(agent=agent2))
+            response.deliverBody(self.dockerUpdater)
         except:
             log.err()
 
     def buildProtocol(self, addr):
         log.msg("addr: %r" % addr)
-        return UpdateDockerMapping(agent=self.agent)
+        return self.dockerUpdater
 
 
-e_url = os.path.join(CONFIG['docker_url'], 'events')
-efactory = EventFactory(agent=agent1)
-log.msg("Created event Factory")
-docker_event_monitor = internet.TCPClient('10.0.8.162', 5000, efactory)
+
+

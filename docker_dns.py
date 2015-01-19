@@ -365,7 +365,11 @@ def main():
         svc.setServiceParent(ret)
 
     # Add the event Loop
-    from docker_events import docker_event_monitor
+    from docker_events import EventFactory
+    from urlparse import urlparse
+    u = urlparse(CONFIG['docker_url'])
+    efactory = EventFactory(config=CONFIG)
+    docker_event_monitor = internet.TCPClient(u.hostname, u.port, efactory)
     docker_event_monitor.setServiceParent(ret)
 
     # DO IT NOW
