@@ -1,0 +1,18 @@
+Configure with bind
+===================
+
+
+If you use a local bind instance you can configure twistd dns with bind adding this stanza to named.conf. For now this requires to disable EDNS, which is not actuallyimplemented in docker_dns.
+
+
+zone "docker" {
+        type forward;
+        forwarders {
+                127.0.0.64;
+        };
+};
+
+
+And binding your local docker_dns server on the following
+loopback ip: 127.0.0.64
+

@@ -2,8 +2,10 @@
 """
 
 import socket
+
+
 def get_preferred_ip():
-    """Return the in-addr name associated to the 
+    """Return the in-addr name associated to the
        ip used to contact the default gw"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -16,6 +18,8 @@ def get_preferred_ip():
 
 
 from functools import partial
+
+
 class memoize(object):
 
     """cache the return value of a method
@@ -57,6 +61,8 @@ class memoize(object):
         return res
 
 # FIXME replace with a more generic solution like operator.attrgetter
+
+
 def traverse_tree(haystack, key_path, default=None):
     """
     Look up value in a nested dict

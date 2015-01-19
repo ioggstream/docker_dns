@@ -8,7 +8,7 @@ To look up a container:
  - 'A' record query a container NAME that will match a container with a docker inspect
    command with '.d' as the TLD. eg: mysql_server1.d
  - 'SRV' record query to _port._srv.container.docker will return the natted address.
-   eg. _3306._tcp.mysql_server1.docker returns 
+   eg. _3306._tcp.mysql_server1.docker returns
    _18080._tcp.compassionate_poincare.docker. 10 IN SRV 100 100 8080 192.168.42.126.
 
 
@@ -30,6 +30,7 @@ from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import failure, log
 
 from utils import get_preferred_ip, memoize
+from docker_events import UpdateDB
 
 # Merge user config over defaults
 CONFIG = DEFAULT_CONFIG = {
@@ -57,12 +58,12 @@ class DockerMapping(object):
     XXX Should it be dns-agnostic, and just a wrapper around docker.api
     """
 
-    def __init__(self, api=None):
+    def __init__(self, api=None, db=None):
         """
         Args:
             api: Docker Client instance used to do API communication
         """
-
+        self.db = db
         self.api = api if api else docker.Client()
         log.msg("DockerMapping pointing to %r" % self.api.base_url)
         try:
@@ -72,7 +73,6 @@ class DockerMapping(object):
             log.err("Cannot instantiate docker api")
             raise ex
 
-    @memoize
     def lookup_container(self, name):
         """
         Gets the container config from a DNS lookup name, or returns None if
@@ -84,8 +84,32 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
+        try:
+            key_path = 'Name'
+            name = name.replace('.docker', '')
+            log.msg('lookup container: %r' % name)
+            if name not in self.db.mappings_idx:
+                raise KeyError("Item %s not found in %s" %
+                               (name, self.db.mappings_idx.keys()))
+            id = self.db.mappings_idx[name]
+            return self.db.mappings[id]
+        except KeyError as e:
+            # warn(str(e))
+            return None
+
+    def lookup_container_old(self, name):
+        """
+        Gets the container config from a DNS lookup name, or returns None if
+        one could not be found
+
+        Args:
+            name: DNS query name to look up
+
+        Returns:
+            Container config dict for the first matching container
+        """
         key_path = 'Name'
-        name = name.strip('.d')
+        name = name.replace('.docker', '')
         log.msg('lookup container: %r' % name)
 
         try:
@@ -95,7 +119,7 @@ class DockerMapping(object):
             for cid in cid_all:
                 cdic = self.api.inspect_container(cid)
                 # as container names starts with "/" we should strip it
-                cname = str(cdic[key_path].strip('/')) 
+                cname = str(cdic[key_path].strip('/'))
                 if cname == name:
                     container_id = cid
                     break
@@ -154,6 +178,10 @@ class DockerMapping(object):
         """
         sport = int(sport)
         container = self.lookup_container(container_name)
+        if not container:
+            log.err("Bad network information for docker")
+            return
+
         try:
             for local, remote in container['NetworkSettings']['Ports'].items():
                 port, proto = local.split("/")
@@ -183,16 +211,17 @@ class DockerResolver(common.ResolverBase):
     Twisted Names just uses the lookupXXX method
     """
     mock_records = [dns.RRHeader(
-            "mock_name", dns.SRV, dns.IN, 86400,
-                        dns.Record_SRV(
-                            priority=100, weight=100, port=19999, target='name', ttl=None),
-                        auth=True),
-                        dns.RRHeader(
-            "mock_name", dns.SRV, dns.IN, 86400,
+                    "mock_name", dns.SRV, dns.IN, 86400,
+                    dns.Record_SRV(
+                        priority=100, weight=100, port=19999, target='name', ttl=None),
+                    auth=True),
+                    dns.RRHeader(
+                    "mock_name", dns.SRV, dns.IN, 86400,
                         dns.Record_SRV(
                             priority=100, weight=100, port=18080, target='name', ttl=None),
                         auth=True)
                         ]
+
     def __init__(self, mapping):
         """
         Args:
@@ -241,10 +270,10 @@ class DockerResolver(common.ResolverBase):
             records = self._a_records(name)
             return defer.succeed((records, (), ()))
 
-        # We need to catch everything. Uncaught exceptian will make the server
+        # We need to catch everything. Uncaught exceptions will make the server
         # stop responding
         except DomainError as e:
-            log.err()
+            log.msg("DomainError: %r " % e)
             return defer.fail(failure.Failure(e))
         except Exception as e:  # pylint:disable=bare-except
             import traceback
@@ -306,7 +335,7 @@ def main():
     log.msg("Connecting to docker instance: %r" % docker_client.info())
 
     # Create our custom mapping and resolver
-    mapping = DockerMapping(docker_client)
+    mapping = DockerMapping(docker_client, db=UpdateDB)
     resolver = DockerResolver(mapping)
 
     # Create twistd stuff to tie in our custom components
@@ -335,8 +364,13 @@ def main():
         )
         svc.setServiceParent(ret)
 
+    # Add the event Loop
+    from docker_events import docker_event_monitor
+    docker_event_monitor.setServiceParent(ret)
+
     # DO IT NOW
     ret.setServiceParent(service.IServiceCollection(application))
+
 
 #
 # This is the effective twisted application

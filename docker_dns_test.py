@@ -67,6 +67,8 @@ def check_deferred(deferred, success):
 
 
 class MockDockerClient(object):
+    base_url = 'http://localhost:5000'
+    version = lambda x: {'ApiVersion': '1.0'}
     inspect_container_pandas = {
         'ID': 'cidpandaslong',
         'Same': 'Value',
@@ -118,6 +120,7 @@ class MockDockerClient(object):
         try:
             return self.inspect_container_returns[cid]
         except KeyError:
+            # Mocks a Docker Client Exception
             response = fudge.Fake()
             response.has_attr(status_code=404, content='PANDAS!')
 
@@ -440,7 +443,8 @@ class DockerResolverTest(unittest.TestCase):
 
         result = check_deferred(deferred, False)
         self.assertNotEqual(result, False)
-        self.assertEqual(result.type, DomainError)  # noqa pylint:disable=maybe-no-member
+        self.assertEqual(
+            result.type, DomainError)  # noqa pylint:disable=maybe-no-member
 
     def test_lookupAddress_invalid_no_nxdomain(self):
         docker_dns.CONFIG['no_nxdomain'] = True
@@ -448,7 +452,8 @@ class DockerResolverTest(unittest.TestCase):
 
         result = check_deferred(deferred, False)
         self.assertNotEqual(result, False)
-        self.assertEqual(result.type, DNSQueryTimeoutError)  # noqa pylint:disable=maybe-no-member
+        self.assertEqual(result.type, DNSQueryTimeoutError)
+                         # noqa pylint:disable=maybe-no-member
 
 
 def main():
