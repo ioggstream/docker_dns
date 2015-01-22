@@ -4,12 +4,10 @@ from twisted.internet import reactor
 from twisted.web.client import Agent, HTTPConnectionPool
 from twisted.web.http_headers import Headers
 import os
-from config import CONFIG
 import simplejson as json
 from twisted.internet.defer import Deferred, DeferredList
 from twisted.internet.protocol import Protocol, ReconnectingClientFactory
-from twisted.application import service, internet
-from twisted.python import log, failure
+from twisted.python import log
 
 
 
@@ -18,8 +16,9 @@ class UpdateDB(Protocol):
     mappings = {}
     mappings_idx = {}
 
-    def __init__(self, deferred):
-        self.deferred = deferred
+    def __init__(self, onLost):
+        """Initialize the Docker host database"""
+        self.onLost = onLost
 
     def dataReceived(self, bytes_):
         if bytes_:
@@ -28,7 +27,15 @@ class UpdateDB(Protocol):
             UpdateDB.updatedb(item)
 
     def connectionLost(self, reason):
-        self.deferred.callback(None)
+        self.onLost.callback(None)
+
+    @staticmethod
+    def populate(mappings):
+        if mappings:
+            print("Populating db with data: %r" % mappings)
+            UpdateDB.mappings = mappings
+            UpdateDB.mappings_idx = {item['Names'][0][1:]: item['Id'] for item in mappings}
+
 
     @staticmethod
     def updatedb(item):

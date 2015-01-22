@@ -16,3 +16,14 @@ zone "docker" {
 And binding your local docker_dns server on the following
 loopback ip: 127.0.0.64
 
+
+Configure with dnsmasq
+======================
+
+You can use twistd dns with dnsmasq using the following file:
+
+# Config file for /etc/dnsmasq.d/dockerdns.conf
+port=53
+
+# Forward only .docker requests...
+server=/docker/127.0.0.64#10053

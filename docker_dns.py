@@ -73,13 +73,8 @@ class DockerMapping(object):
             log.err("Cannot instantiate docker api")
             raise ex
 
-    def populate_db(self):
-        """
-        Get all containers and populates the db
-        """
-        self.db.mappings = self.api.containers(all=True) 
-        for x in self.db.mappings.items():
-            self.db.update
+        db.populate(self.api.containers(all=True))
+
 
     def lookup_container(self, name):
         """
@@ -103,6 +98,9 @@ class DockerMapping(object):
             return self.db.mappings[id]
         except KeyError as e:
             # warn(str(e))
+            return None
+        except Exception as e:
+            log.exc("Unmanaged error")
             return None
 
     def lookup_container_old(self, name):
@@ -173,7 +171,6 @@ class DockerMapping(object):
 
         return addr
 
-    #@memoize
     def get_nat(self, container_name, sport=0, sproto=None):
         """ @return - a generator of natted maps (local, nat, ip)
 
