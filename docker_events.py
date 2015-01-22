@@ -9,7 +9,7 @@ import simplejson as json
 from twisted.internet.defer import Deferred, DeferredList
 from twisted.internet.protocol import Protocol, ReconnectingClientFactory
 from twisted.application import service, internet
-from twisted.python import log
+from twisted.python import log, failure
 
 
 
@@ -98,7 +98,12 @@ class UpdateDockerMapping(Protocol):
                 elif item['status'] in ('stop', 'die'):
                     self.delete_record(item)
         except KeyError:
-            log.exc()
+            log.err("Container not found")
+        except json.scanner.JSONDecodeError:
+            log.err("Error reading data")
+        except Exception:
+            log.err("Generic Error")
+            
 
     def connectionLost(self, reason):
         print('Finished receiving body:', reason.type, reason.value)
@@ -118,6 +123,8 @@ class EventFactory(ReconnectingClientFactory):
         #
         self.dockerUpdater = UpdateDockerMapping(agent=self.agent2, config=config)
 
+        # Populate existing containers (this is ok to be blocking)
+
         #
         # Poll to the docker event interface
         #
@@ -130,6 +137,7 @@ class EventFactory(ReconnectingClientFactory):
         d.addCallbacks(self.cbResponse, lambda failure: print(str(failure)))
 
     def cbResponse(self, response):
+        """Manages the response using a Protocol class defined in __init__"""
         try:
             log.msg('Response received: %r' % response)
             finished = Deferred()

@@ -73,6 +73,14 @@ class DockerMapping(object):
             log.err("Cannot instantiate docker api")
             raise ex
 
+    def populate_db(self):
+        """
+        Get all containers and populates the db
+        """
+        self.db.mappings = self.api.containers(all=True) 
+        for x in self.db.mappings.items():
+            self.db.update
+
     def lookup_container(self, name):
         """
         Gets the container config from a DNS lookup name, or returns None if
