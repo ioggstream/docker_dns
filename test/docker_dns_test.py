@@ -9,19 +9,17 @@ Author: Ricky Cook <ricky@infoxchange.net.au>
 # Do not care......
 # noqa pylint:disable=missing-docstring,too-many-public-methods,protected-access,invalid-name
 
-import docker_dns
-
-import docker
-import fudge
 import itertools
 import unittest
 
-from utils import traverse_tree
-from docker_dns import (DEFAULT_CONFIG,
-                        DockerMapping,
-                        DockerResolver)
+import docker
+import fudge
 from twisted.names import dns
 from twisted.names.error import DNSQueryTimeoutError, DomainError
+from twisted.python import log
+from dockerdns.utils import traverse_tree
+from dockerdns.mappings import DockerMapping
+from dockerdns.resolver import DockerResolver
 
 
 # FIXME I can not believe how disgusting this is
@@ -40,6 +38,7 @@ def check_record(record, **kwargs):
             real_value = real_value.name
 
         if real_value != kwargs[k]:
+            log.err("Expected: %s vs %s" % (kwargs[k], real_value))
             return False
 
     return True
@@ -222,117 +221,13 @@ class DictLookupTest(unittest.TestCase):
         )
 
 
-class DockerMappingTest(unittest.TestCase):
-
-    def setUp(self):
-        docker_dns.CONFIG = DEFAULT_CONFIG
-        self.client = MockDockerClient()
-        self.mapping = DockerMapping(self.client)
-
-    #
-    # TEST _ids_from_prop
-    #
-    def test__ids_from_prop_single_depth(self):
-        ids_gen1, ids_gen2 = itertools.tee(
-            self.mapping._ids_from_prop(
-                ['ID'],
-                'cidpandaslong'
-            )
-        )
-        self.assertEqual(sum(1 for _ in ids_gen1), 1)
-        self.assertEqual(
-            ids_gen2.next(),
-            'cidpandaslong'
-        )
-
-    def test__ids_from_prop_multi_depth(self):
-        ids_gen1, ids_gen2 = itertools.tee(
-            self.mapping._ids_from_prop(
-                ['NetworkSettings', 'IPAddress'],
-                '8.8.8.8'
-            )
-        )
-        self.assertEqual(sum(1 for _ in ids_gen1), 1)
-        self.assertEqual(
-            ids_gen2.next(),
-            'cidfoxeslong'
-        )
-
-    def test__ids_from_prop_multi_match(self):
-        # FIXME I can not believe how disgusting this is
-        ids_gen1, ids_gen2, ids_gen3 = itertools.tee(
-            self.mapping._ids_from_prop(
-                ['Same'],
-                'Value'
-            ), 3
-        )
-        self.assertEqual(sum(1 for _ in ids_gen1), 2)
-        self.assertTrue(in_generator(ids_gen2, 'cidpandaslong'))
-        self.assertTrue(in_generator(ids_gen3, 'cidfoxeslong'))
-
-    #
-    # TEST lookup_container
-    #
-    def test_lookup_container_hostname(self):
-        self.assertEqual(
-            self.mapping.lookup_container('cuddly-pandas'),
-            self.client.inspect_container_pandas
-        )
-
-    def test_lookup_container_id(self):
-        self.assertEqual(
-            self.mapping.lookup_container('cidfoxes.docker'),
-            self.client.inspect_container_foxes
-        )
-
-    def test_lookup_container_hostname_none(self):
-        self.assertEqual(
-            # Raises an APIError 404
-            self.mapping.lookup_container('invalid'),
-            None
-        )
-
-    def test_lookup_container_id_none(self):
-        self.assertEqual(
-            # Raises an APIError 404
-            self.mapping.lookup_container('invalid.docker'),
-            None
-        )
-
-    #
-    # TEST get_a
-    #
-    def test_get_a_hostname(self):
-        self.assertEqual(
-            self.mapping.get_a('sneaky-foxes'),
-            '8.8.8.8'
-        )
-
-    def test_get_a_id(self):
-        self.assertEqual(
-            self.mapping.get_a('cidpandas.docker'),
-            '127.0.0.1'
-        )
-
-    def test_get_a_hostname_none(self):
-        self.assertEqual(
-            self.mapping.get_a('invalid'),
-            None
-        )
-
-    def test_get_a_id_none(self):
-        self.assertEqual(
-            self.mapping.get_a('invalid.docker'),
-            None
-        )
-
-
 class DockerResolverTest(unittest.TestCase):
 
     def setUp(self):
-        docker_dns.CONFIG = DEFAULT_CONFIG
-        self.client = MockDockerClient()
-        self.mapping = DockerMapping(self.client)
+        self.CONFIG = {}
+        from test.test_events import create_mock_db2
+        self.db = create_mock_db2()
+        self.mapping = DockerMapping(self.db)
         self.resolver = DockerResolver(self.mapping)
 
     #
@@ -384,7 +279,7 @@ class DockerResolverTest(unittest.TestCase):
         )
 
     def test__a_records_authoritive(self):
-        docker_dns.CONFIG['authoritive'] = True
+        self.resolver.config['authoritive'] = True
         rec = self.resolver._a_records('cidpandas.docker')
         self.assertEqual(len(rec), 1)
 
@@ -397,7 +292,7 @@ class DockerResolverTest(unittest.TestCase):
         ))
 
     def test__a_records_non_authoritive(self):
-        docker_dns.CONFIG['authoritive'] = False
+        self.resolver.config['authoritive'] = False
         rec = self.resolver._a_records('cidpandas.docker')
         self.assertEqual(len(rec), 1)
 
@@ -438,7 +333,7 @@ class DockerResolverTest(unittest.TestCase):
         self.assertNotEqual(result, False)
 
     def test_lookupAddress_invalid_nxdomain(self):
-        docker_dns.CONFIG['no_nxdomain'] = False
+        self.resolver.config['no_nxdomain'] = False
         deferred = self.resolver.lookupAddress('invalid')
 
         result = check_deferred(deferred, False)
@@ -447,7 +342,7 @@ class DockerResolverTest(unittest.TestCase):
             result.type, DomainError)  # noqa pylint:disable=maybe-no-member
 
     def test_lookupAddress_invalid_no_nxdomain(self):
-        docker_dns.CONFIG['no_nxdomain'] = True
+        self.resolver.config['no_nxdomain'] = True
         deferred = self.resolver.lookupAddress('invalid')
 
         result = check_deferred(deferred, False)

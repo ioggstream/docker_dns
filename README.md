@@ -2,12 +2,13 @@ Docker DNS
 ==========
 [![Build Status](https://travis-ci.org/infoxchange/docker_dns.png?branch=master)](https://travis-ci.org/infoxchange/docker_dns)
 
-A simple Twisted DNS server using custom TLD and Docker as the back end for IP
+A simple Twisted DNS server using custom TLD and Docker Event interface as the back end for IP
 resolution.
 
 To look up a container:
  - 'A' record query a container NAME that will match a container with a docker inspect
-   command with '.d' as the TLD. eg: mysql_server1.d
+   command with '.docker' as the TLD. eg: mysql_server1.docker
+ - 'SRV' record query exposing the NAT informations
 
 Install/Run
 -----------

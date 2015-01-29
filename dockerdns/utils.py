@@ -12,7 +12,7 @@ def get_preferred_ip():
         # connecting to a UDP address doesn't send packets
         s.connect(('8.8.8.8', 0))
         ip = s.getsockname()[0]
-        return '.'.join(list(reversed(s.getsockname()[0].split(".")))) + ".in-addr.arpa"
+        return ip, '.'.join(list(reversed(ip.split(".")))) + ".in-addr.arpa"
     except Exception as e:
         return socket.getfqdn()
 
@@ -65,20 +65,19 @@ class memoize(object):
 
 def traverse_tree(haystack, key_path, default=None):
     """
-    Look up value in a nested dict
+    Find an element in a nested dict, eg.
+     traverse_tree({'Net': {'IP': '1.1.1.1'}}, ['Net', 'IP']) == '1.1.1.1'
 
-    Args:
-        dic: The dictionary to search
-        key_path: An iterable containing an ordered list of dict keys to
+    :param haystack: The nested dictionary to search
+    :param key_path: An iterable containing an ordered list of dict keys to
                   traverse
-        default: Value to return in case nothing is found
-    Returns:
-        Value of the dict at the nested location given, or default if no value
+    :param default: Value to return in case nothing is found
+    :return:Value of the dict at the nested location given, or default if no value
         was found
     """
     for k in key_path:
         if k in haystack:
-            haystack = dic[k]
+            haystack = haystack[k]
         else:
             return default
     return haystack

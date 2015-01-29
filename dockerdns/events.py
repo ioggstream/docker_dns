@@ -1,95 +1,109 @@
 from __future__ import print_function
 
+"""
+    Populate dns database getting info from docker via:
+        - docker-py api
+        - docker events interface
+"""
 from twisted.internet import reactor
 from twisted.web.client import Agent, HTTPConnectionPool
 from twisted.web.http_headers import Headers
-import os
+from os.path import join as pjoin
 import simplejson as json
-from twisted.internet.defer import Deferred, DeferredList
+from twisted.internet.defer import Deferred
 from twisted.internet.protocol import Protocol, ReconnectingClientFactory
 from twisted.python import log
 
 
+class DockerDB(object):
+    """Update docker ip store connecting via docker-py
+    """
 
-class UpdateDB(Protocol):
-    """Update docker ip store"""
-    mappings = {}
-    mappings_idx = {}
+    def __init__(self, api=None):
+        self.api = api
+        self.mappings = {}
+        self.mappings_idx = {}
+        #
+        # Initialize db (TODO get initialization timestamp)
+        for c in self.api.containers(all=True):
+            item = self.api.inspect_container(c['Id'])
+            self.updatedb(item)
 
-    def __init__(self, onLost):
+    def updatedb(self, item):
+        assert 'Id' in item, "Entry has no Id"
+        self.mappings_idx.update({item['Name'][1:]: item['Id']})
+        self.mappings.update({item['Id']: item})
+
+    def add_container(self, item):
+        self.updatedb(item)
+
+    def del_container(self, cid):
+        name = self.mappings[cid]['Name'][1:]
+        del self.mappings[cid]
+        del self.mappings_idx[name]
+
+    def get_by_name(self, name):
+        if name not in self.mappings_idx:
+            raise KeyError("%r not in %r" % (name, self.mappings_idx))
+
+        cid = self.mappings_idx[name]
+        if cid not in self.mappings:
+            raise KeyError("%r not in %r" % (cid, self.mappings.keys()))
+        return self.mappings[cid]
+
+
+class ContainerManager(Protocol):
+    """Manage the response to /containers/{id}/json
+        updating the network infos associated to the container
+    """
+
+    def __init__(self, onLost, db):
         """Initialize the Docker host database"""
         self.onLost = onLost
+        self.db = db
 
     def dataReceived(self, bytes_):
         if bytes_:
             item = json.loads(bytes_)
             print("Get container %r" % item)
-            UpdateDB.updatedb(item)
+            self.db.updatedb(item)
 
     def connectionLost(self, reason):
         self.onLost.callback(None)
 
-    @staticmethod
-    def populate(mappings):
-        if mappings:
-            print("Populating db with data: %r" % mappings)
-            UpdateDB.mappings = mappings
-            UpdateDB.mappings_idx = {item['Names'][0][1:]: item['Id'] for item in mappings}
 
+class EventManager(Protocol):
+    """Manage the response to /events/json
+        - start: triggers a further request with a ContainerManager cb
+        - stop|die: removes the associations from IPs
+    """
 
-    @staticmethod
-    def updatedb(item):
-        assert 'Id' in item, "Entry has no Id"
-        UpdateDB.mappings_idx.update({item['Name'][1:]: item['Id']})
-        UpdateDB.mappings.update({item['Id']: item})
-
-    @staticmethod
-    def add_container(item):
-        UpdateDB.updatedb(item)
-
-    @staticmethod
-    def del_container(id):
-        name = UpdateDB.mappings[id]['Name'][1:]
-        del UpdateDB.mappings[id]
-        del UpdateDB.mappings_idx[name]
-
-    @staticmethod
-    def get_by_name(name):
-        if name not in UpdateDB.mappings_idx:
-            raise KeyError("%r not in %r" % (name, UpdateDB.mappings_idx))
-
-        cid = UpdateDB.mappings_idx[name]
-        if cid not in UpdateDB.mappings:
-            raise KeyError("%r not in %r" % (cid, UpdateDB.mappings.keys()))
-        return UpdateDB.mappings[id]
-
-
-class UpdateDockerMapping(Protocol):
-    """Parse docker events and update item store"""
-    def __init__(self, agent, config):
-        self.agent = agent
+    def __init__(self, http_agent, config, db):
+        self.http_agent = http_agent
         self.config = config
 
         self.remaining = 1024 * 10
         self.buff = ""
+        # Create an event_manager for parsing updates
+        self.event_manager = ContainerManager(Deferred(), db=db)
 
     def update_record(self, item):
         """Update docker mapping
             item = {'status': ..., 'id': ...}
         """
-        d = self.agent.request('GET',
-                               os.path.join(self.config['docker_url'],
-                                            'containers', item['id'], 'json')
-                               )
+        d = self.http_agent.request('GET',
+                                    pjoin(self.config['docker_url'],
+                                          'containers', item['id'], 'json')
+                                    )
         d.addCallback(
-            lambda response: response.deliverBody(UpdateDB(Deferred())))
+            lambda response: response.deliverBody(self.event_manager))
 
     def delete_record(self, item):
         """Update docker mapping
             item = {'status': ..., 'id': ...}
         """
         log.msg("removing item: %r" % item)
-        UpdateDB.del_container(item['id'])
+        self.db.del_container(item['id'])
 
     def dataReceived(self, bytes_):
         """Get the container id and calls the updater"""
@@ -108,9 +122,8 @@ class UpdateDockerMapping(Protocol):
             log.err("Container not found")
         except json.scanner.JSONDecodeError:
             log.err("Error reading data")
-        except Exception:
-            log.err("Generic Error")
-            
+        except Exception as e:
+            log.err("Generic Error %r" % e)
 
     def connectionLost(self, reason):
         print('Finished receiving body:', reason.type, reason.value)
@@ -118,17 +131,27 @@ class UpdateDockerMapping(Protocol):
 
 
 class EventFactory(ReconnectingClientFactory):
-    # protocol = UpdateDockerMapping
+    """Factory to connect to docker api interface and trigger
+        the first /events/ call.
+
+    """
     agent = Agent(reactor)
     agent2 = Agent(reactor, HTTPConnectionPool(reactor))
 
-    def __init__(self, config, db=UpdateDB):
+    def __init__(self, config, db):
+        """
+
+        :param config: contains the docker url to poll
+        :param db: the mappings between containers and
+        :return:
+        """
         log.msg("Initializing factory")
         self.db = db
         #
         # Create a protocol handler to parse docker container data
         #
-        self.dockerUpdater = UpdateDockerMapping(agent=self.agent2, config=config)
+        self.dockerUpdater = EventManager(
+            http_agent=self.agent2, config=config, db=db)
 
         # Populate existing containers (this is ok to be blocking)
 
@@ -137,7 +160,7 @@ class EventFactory(ReconnectingClientFactory):
         #
         d = self.agent.request(
             'GET',
-            os.path.join(config['docker_url'], 'events'),
+            pjoin(config['docker_url'], 'events'),
             Headers({'User-Agent': ['Twisted Web Client for Docker Event'],
                      'Content-Type': ['application/json']}),
             None)
@@ -155,7 +178,3 @@ class EventFactory(ReconnectingClientFactory):
     def buildProtocol(self, addr):
         log.msg("addr: %r" % addr)
         return self.dockerUpdater
-
-
-
-
