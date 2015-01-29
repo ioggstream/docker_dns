@@ -1,13 +1,76 @@
-"""
- Creating srv records
+__author__ = 'rpolli'
 
-"""
-from docker_dns import DockerResolver, DockerMapping
-from twisted.names import dns
-from docker_dns_test import check_deferred
-import docker
+inspect_container_pandas_0 = {
+    'Id': 'cidpandas0',
+    'Same': 'Value',
+    'Config': {
+        'Hostname': 'furby-pandas',
+        'Image': 'impandas'
+    },
+    'NetworkSettings': {
+        'IPAddress': '127.0.0.1'
+    },
+    'Name': '/cidpandas0',
+    'Image': 'imgid_pandas'
+}
+inspect_container_pandas = {
+    'Id': 'cidpandas',
+    'Same': 'Value',
+    'Config': {
+        'Hostname': 'cuddly-pandas',
+        'Image': 'impandas'
+    },
+    'NetworkSettings': {
+        'IPAddress': '127.0.0.1'
+    },
+    'Name': '/cidpandas',
+    'Image': 'imgid_pandas'
+}
+inspect_container_foxes = {
+    'Id': 'cidfoxes',
+    'Same': 'Value',
+    'Config': {
+        'Hostname': 'sneaky-foxes',
+         'Image': 'imfoxes'
+    },
+    'NetworkSettings': {
+        'IPAddress': '8.8.8.8'
+    },
+    'Name': '/cidfoxes',
+    'Image': 'imgid_foxes'
+}
+inspect_container_sloths = {
+    'Id': 'cidsloths',
+    'Config': {
+        'Hostname': 'stopped-sloths',
+        'Image': 'imsloths'
+    },
+    'NetworkSettings': {
+        'IPAddress': ''
+    },
+    'Name': '/cidsloths',
+    'Image': 'imgid_sloths'
+}
+inspect_container_returns = {
+    'cidpandas0': inspect_container_pandas_0,
+    'cidpandas': inspect_container_pandas,
+    'cidfoxes': inspect_container_foxes,
+    'cidsloths': inspect_container_sloths,
+}
+containers_return = [
+    {'Id': 'cidpandas0'},
+    {'Id': 'cidpandas'},
+    {'Id': 'cidfoxes'},
+    {'Id': 'cidsloths'},
+]
 
-mock_list_containers = lambda self, name: [
+mock_list_containers_2 = lambda *a, **k: [
+    inspect_container_foxes, inspect_container_pandas, inspect_container_sloths,
+    inspect_container_pandas_0
+]
+mock_inspect_containers_2 = lambda cid, **k: inspect_container_returns[cid]
+
+mock_list_containers = lambda *a, **k: [
     {u'Command': u'/bin/bash',
      u'Created': 1414430175,
      u'Id': u'7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4',
@@ -31,7 +94,10 @@ mock_list_containers = lambda self, name: [
 ]
 
 
-mock_lookup_container = lambda name: {
+mock_lookup_container = lambda *a, **k: {
+    u'Id': u'7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4',
+    u'Image': u'1fc3b15852c8cb8f5b195cee6c3c178b739b77411d9dbebbcbb3d5217f5a6ac6',
+    u'Name': u'/jboss631',
     u'Args': [],
     u'Config': {u'AttachStderr': True,
                 u'AttachStdin': True,
@@ -82,10 +148,7 @@ mock_lookup_container = lambda name: {
                     u'VolumesFrom': None},
     u'HostnamePath': u'/var/lib/docker/containers/7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4/hostname',
     u'HostsPath': u'/var/lib/docker/containers/7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4/hosts',
-    u'Id': u'7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4',
-    u'Image': u'1fc3b15852c8cb8f5b195cee6c3c178b739b77411d9dbebbcbb3d5217f5a6ac6',
     u'MountLabel': u'',
-    u'Name': u'/jboss631',
     u'NetworkSettings': {u'Bridge': u'docker0',
                          u'Gateway': u'172.17.42.1',
                          u'IPAddress': u'172.17.0.10',
@@ -111,62 +174,3 @@ mock_lookup_container = lambda name: {
 }
 
 SRV_FMT = "_{svc}._{proto}.{container}.docker TTL {cclass} SRV {priority} {weight} {port} {target}"
-
-
-class Test(object):
-
-    def setup(self):
-        docker_client = docker.Client()
-        self.mapping = DockerMapping(api=docker_client)
-        self.mapping.lookup_container = mock_lookup_container
-        self.resolver = DockerResolver(self.mapping)
-
-    def test_nat_all(self):
-        host, port = "foo.docker", 8080
-        ret = self.mapping.get_nat(host, port)
-        assert (8080, "tcp", 18080, "0.0.0.0") in ret, "ret: %r" % ret
-
-    def test_nat_ports(self):
-        expected = [(8080, 18080),
-                    (9999, 19999), (8787, 8787)]
-        for pin, pout in expected:
-            ret = self.mapping.get_nat("foo", pin)
-            _, _, port, _ = next(ret)
-            assert port == pout, "unexpected value in %r" % ret
-
-    def test_lookupService_ko(self):
-        expect_fail = 'nondocker.domain noproto.docker noport.container.docker nonint._tcp.container.docker'.split(
-        )
-        for n in expect_fail:
-            ret = self.resolver.lookupService(n)
-            check_deferred(ret, False)
-
-    def test_lookupService_ok(self):
-        ret = self.resolver.lookupService("_8080._tcp.jboss631.docker")
-        ret = check_deferred(ret, True)
-        print("resolved: %r" % [ret])
-
-    def test_mapping(self):
-        container = self.mapping.lookup_container("foo")
-
-        for local, remote in container['NetworkSettings']['Ports'].items():
-            port, proto = local.split("/")
-            if not remote:
-                continue
-            try:
-                remote = remote[0]
-            except IndexError:
-                continue
-
-            print(SRV_FMT.format(
-                svc=port,
-                  proto=proto,
-                  container=container['Name'][1:],
-                  cclass="IN",
-                  priority=100,
-                  weight=100,
-                  port=remote['HostPort'],
-                  target=remote['HostIp'] if remote[
-                  'HostIp'] != '0.0.0.0' else "localhost"
-                  )
-                  )
