@@ -17,9 +17,8 @@ import fudge
 from twisted.names import dns
 from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import log
-from dockerdns.utils import traverse_tree
 from dockerdns.mappings import DockerMapping
-from dockerdns.resolver import DockerResolver
+from dockerdns.resolver import DockerResolver, NO_NXDOMAIN
 
 
 # FIXME I can not believe how disgusting this is
@@ -31,14 +30,20 @@ def in_generator(gen, val):
     )
 
 
-def check_record(record, **kwargs):
-    for k in kwargs:
+def check_record(record, **expected):
+    """
+    Compare a record with the values of the kwargs
+    :param record:
+    :param expected:
+    :return:
+    """
+    for k in expected:
         real_value = getattr(record, k)
         if k is 'name':
             real_value = real_value.name
 
-        if real_value != kwargs[k]:
-            log.err("Expected: %s vs %s" % (kwargs[k], real_value))
+        if real_value != expected[k]:
+            log.err("Expected %s: %s vs %s" % (k, expected[k], real_value))
             return False
 
     return True
@@ -130,131 +135,33 @@ class MockDockerClient(object):
         return self.containers_return
 
 
-class DictLookupTest(unittest.TestCase):
-    theDict = {
-        'pandas': {
-            'are': 'cuddly',
-            'and': 'awesome',
-        },
-        'foxes': {
-            'are': 'sneaky',
-            'and': 'orange',
-        },
-        'badgers': {
-            'are': None,
-        },
-    }
-
-    def test_basic_one(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['pandas', 'and']
-            ),
-            'awesome'
-        )
-
-    def test_basic_two(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['foxes', 'are']
-            ),
-            'sneaky'
-        )
-
-    def test_basic_none(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['badgers', 'are'],
-                'Badgers are none? What?'
-            ),
-            None
-        )
-
-    def test_dict(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['foxes']
-            ),
-            self.theDict['foxes']
-        )
-
-    def test_default_single_depth(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['nothing']
-            ),
-            None
-        )
-
-    def test_user_default_single_depth(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['nothing'],
-                'Nobody here but us chickens'
-            ),
-            'Nobody here but us chickens'
-        )
-
-    def test_default_multi_depth(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['pandas', 'bad']
-            ),
-            None
-        )
-
-    def test_user_default_multi_depth(self):
-        self.assertEqual(
-            traverse_tree(
-                self.theDict,
-                ['pandas', 'bad'],
-                'NO, THAT\'S A DAMN DIRTY LIE'
-            ),
-            'NO, THAT\'S A DAMN DIRTY LIE'
-        )
-
-
 class DockerResolverTest(unittest.TestCase):
-
     def setUp(self):
         self.CONFIG = {}
         from test.test_events import create_mock_db2
+
         self.db = create_mock_db2()
         self.mapping = DockerMapping(self.db)
         self.resolver = DockerResolver(self.mapping)
+
+    def harn_expected(self, name, expected_record):
+        rec = self.resolver._a_records(name)
+        self.assertEqual(len(rec), 1)
+        rec = rec[0]
+        self.assertTrue(check_record(rec, **expected_record))
+        return rec
 
     #
     # TEST _a_records
     #
     def test__a_records_hostname(self):
-        rec = self.resolver._a_records('sneaky-foxes')
-        self.assertEqual(len(rec), 1)
-
-        rec = rec[0]
-        self.assertTrue(check_record(
-            rec,
-            name='sneaky-foxes',
-            type=dns.A,
-        ))
+        name, expected_record = 'sneaky-foxes', {'name': 'sneaky-foxes.docker', 'type': dns.A}
+        rec = self.harn_expected(name, expected_record)
         self.assertEqual(rec.payload.dottedQuad(), '8.8.8.8')
 
     def test__a_records_id(self):
-        rec = self.resolver._a_records('cidpandas.docker')
-        self.assertEqual(len(rec), 1)
-
-        rec = rec[0]
-        self.assertTrue(check_record(
-            rec,
-            name='cidpandas.docker',
-            type=dns.A,
-        ))
+        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A}
+        rec = self.harn_expected(name, expected_record)
         self.assertEqual(rec.payload.dottedQuad(), '127.0.0.1')
 
     def test__a_records_shutdown(self):
@@ -278,63 +185,51 @@ class DockerResolverTest(unittest.TestCase):
             ''
         )
 
-    def test__a_records_authoritive(self):
-        self.resolver.config['authoritive'] = True
-        rec = self.resolver._a_records('cidpandas.docker')
-        self.assertEqual(len(rec), 1)
+    def test__a_records_authoritative(self):
+        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A, 'auth': True}
+        self.resolver.config['authoritative'] = True
+        self.harn_expected(name, expected_record)
 
-        rec = rec[0]
-        self.assertTrue(check_record(
-            rec,
-            name='cidpandas.docker',
-            type=dns.A,
-            auth=True,
-        ))
-
-    def test__a_records_non_authoritive(self):
-        self.resolver.config['authoritive'] = False
-        rec = self.resolver._a_records('cidpandas.docker')
-        self.assertEqual(len(rec), 1)
-
-        rec = rec[0]
-        self.assertTrue(check_record(
-            rec,
-            name='cidpandas.docker',
-            type=dns.A,
-            auth=False,
-        ))
+    def test__a_records_non_authoritative(self):
+        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A, 'auth': False}
+        self.resolver.config['authoritative'] = False
+        self.harn_expected(name, expected_record)
 
     #
     # TEST lookupAddress
     #
     def test_lookupAddress_id(self):
+        expected_record, expected_authority, expected_additional = (
+            {'name': 'cidfoxes.docker', 'type': dns.A},
+            tuple(),
+            tuple()
+        )
         deferred = self.resolver.lookupAddress('cidfoxes.docker')
 
         result = check_deferred(deferred, True)
         self.assertNotEqual(result, False)
 
-        self.assertEqual(len(result), 3)
-        self.assertEqual(result[1], ())
-        self.assertEqual(result[2], ())
-        self.assertEqual(len(result[0]), 1)
+        response_rr, authority_rr, additional_rr = result
+        # skip this tests as we're now populating
+        # the authority and additional section
+        self.assertEqual(len(response_rr), 1)
 
-        rec = result[0][0]
+        rec = response_rr[0]
         self.assertTrue(check_record(
             rec,
-            name='cidfoxes.docker',
-            type=dns.A,
+            **expected_record
         ))
         self.assertEqual(rec.payload.dottedQuad(), '8.8.8.8')
 
     def test_lookupAddress_invalid(self):
-        deferred = self.resolver.lookupAddress('invalid')
+        deferred = self.resolver.lookupAddress('invalid.docker')
 
         result = check_deferred(deferred, False)
         self.assertNotEqual(result, False)
 
     def test_lookupAddress_invalid_nxdomain(self):
-        self.resolver.config['no_nxdomain'] = False
-        deferred = self.resolver.lookupAddress('invalid')
+        self.resolver.config[NO_NXDOMAIN] = False
+        deferred = self.resolver.lookupAddress('invalid.docker')
 
         result = check_deferred(deferred, False)
         self.assertNotEqual(result, False)
@@ -342,14 +237,37 @@ class DockerResolverTest(unittest.TestCase):
             result.type, DomainError)  # noqa pylint:disable=maybe-no-member
 
     def test_lookupAddress_invalid_no_nxdomain(self):
-        self.resolver.config['no_nxdomain'] = True
-        deferred = self.resolver.lookupAddress('invalid')
+        self.resolver.config[NO_NXDOMAIN] = True
+        deferred = self.resolver.lookupAddress('invalid.docker')
 
         result = check_deferred(deferred, False)
         self.assertNotEqual(result, False)
         self.assertEqual(result.type, DNSQueryTimeoutError)
-                         # noqa pylint:disable=maybe-no-member
+        # noqa pylint:disable=maybe-no-member
 
+    def test_lookupAddress_multi(self):
+        # search by image
+        # host -t a impandas.*.docker
+        #
+        expected_records = (
+            {'name': 'cidpandas.docker'},
+            {'name': 'cidpandas0.docker'}
+        )
+        self.resolver.config[NO_NXDOMAIN] = False
+
+        # retrieve hosts by image
+        deferred = self.resolver.lookupAddress('impandas.*.docker')
+        result = check_deferred(deferred, True)
+        self.assertNotEqual(result, False)
+
+        response_rr, authority_rr, additional_rr = result
+        self.assertEqual(len(response_rr), len(expected_records))
+
+        for rec, expected_record in zip(response_rr, expected_records):
+            self.assertTrue(check_record(
+                rec,
+                **expected_record
+            ))
 
 def main():
     unittest.main()

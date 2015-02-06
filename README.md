@@ -141,8 +141,8 @@ configuration is rather limited.
         # NXDOMAIN so secondary DNS is used
         'no_nxdomain': True,
 
-        # Makes successful requests authoritive
-        'authoritive': True,
+        # Makes successful requests authoritative
+        'authoritative': True,
     }
 
 Contributing

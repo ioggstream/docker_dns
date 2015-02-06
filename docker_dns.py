@@ -37,6 +37,7 @@ CONFIG = DEFAULT_CONFIG = {
     'bind_protocols': ['tcp', 'udp'],
     'no_nxdomain': True,
     'authoritative': True,
+    'domain': 'docker'
 }
 
 # Load the config

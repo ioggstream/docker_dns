@@ -20,9 +20,20 @@ class DockerDB(object):
     """
 
     def __init__(self, api=None):
+        """
+
+        :param api: a docker.Client instance
+        :return:
+        """
         self.api = api
+        # container list and some indexes:
+        #  - name: id
+        #  - image: names
+        #  - hostname: id
         self.mappings = {}
-        self.mappings_idx = {}
+        self.mappings_name = {}
+        self.mappings_image = {}
+        self.mappings_hostname = {}
         #
         # Initialize db (TODO get initialization timestamp)
         for c in self.api.containers(all=True):
@@ -31,25 +42,54 @@ class DockerDB(object):
 
     def updatedb(self, item):
         assert 'Id' in item, "Entry has no Id"
-        self.mappings_idx.update({item['Name'][1:]: item['Id']})
+
+        name = item['Name'][1:]
+        hostname = item['Config']['Hostname']
+        self.mappings_name.update({name: item['Id']})
+        self.mappings_hostname.update({hostname: item['Id']})
         self.mappings.update({item['Id']: item})
+        self.mappings_image.setdefault(item['Config']['Image'], []).append(name)
 
     def add_container(self, item):
         self.updatedb(item)
 
     def del_container(self, cid):
         name = self.mappings[cid]['Name'][1:]
+        image = self.mappings[cid]['Config']['Image']
+        hostname = self.mappings[cid]['Config']['Hostname']
+        self.mappings_image.get(image, []).remove(name)
         del self.mappings[cid]
-        del self.mappings_idx[name]
+        del self.mappings_name[name]
+        del self.mappings_hostname[hostname]
 
     def get_by_name(self, name):
-        if name not in self.mappings_idx:
-            raise KeyError("%r not in %r" % (name, self.mappings_idx))
+        if name not in self.mappings_name:
+            raise KeyError("%r not in %r" % (name, self.mappings_name))
 
-        cid = self.mappings_idx[name]
+        cid = self.mappings_name[name]
         if cid not in self.mappings:
             raise KeyError("%r not in %r" % (cid, self.mappings.keys()))
         return self.mappings[cid]
+
+    def get_by_hostname(self, name):
+        if name not in self.mappings_hostname:
+            raise KeyError("%r not in %r" % (name, self.mappings_hostname))
+
+        cid = self.mappings_hostname[name]
+        if cid not in self.mappings:
+            raise KeyError("%r not in %r" % (cid, self.mappings.keys()))
+        return self.mappings[cid]
+
+    def get_by_image(self, image):
+        """
+
+        :param image:
+        :return: an generator of container dicts
+        """
+        if image not in self.mappings_image:
+            raise KeyError("%r not in %r" % (image, self.mappings_hostname))
+        for cid in self.mappings_image[image]:
+            yield self.mappings[cid]
 
 
 class ContainerManager(Protocol):
