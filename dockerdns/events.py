@@ -81,11 +81,12 @@ class EventManager(Protocol):
     def __init__(self, http_agent, config, db):
         self.http_agent = http_agent
         self.config = config
+        self.db = db
 
         self.remaining = 1024 * 10
         self.buff = ""
-        # Create an event_manager for parsing updates
-        self.event_manager = ContainerManager(Deferred(), db=db)
+        # Create an container_manager for parsing updates
+        self.container_manager = ContainerManager(Deferred(), db=db)
 
     def update_record(self, item):
         """Update docker mapping
@@ -96,7 +97,7 @@ class EventManager(Protocol):
                                           'containers', item['id'], 'json')
                                     )
         d.addCallback(
-            lambda response: response.deliverBody(self.event_manager))
+            lambda response: response.deliverBody(self.container_manager))
 
     def delete_record(self, item):
         """Update docker mapping

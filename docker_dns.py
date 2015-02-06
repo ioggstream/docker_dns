@@ -31,7 +31,7 @@ from dockerdns.resolver import DockerResolver
 # Merge user config over defaults
 CONFIG = DEFAULT_CONFIG = {
     'docker_url': 'unix://var/run/docker.sock',
-    'version': '1.13',
+    'version': '1.15',
     'bind_interface': '',
     'bind_port': 53,
     'bind_protocols': ['tcp', 'udp'],
@@ -54,7 +54,7 @@ def main():
     import docker
 
     # Create docker: by default dict.get returns None on missing keys
-    docker_client = docker.Client(CONFIG.get('docker_url'))
+    docker_client = docker.Client(CONFIG.get('docker_url'), version=CONFIG['version'])
     infos = docker_client.info()
     # Test docker connectivity before starting
     log.msg("Connecting to docker instance: %r" % infos)
