@@ -5,11 +5,11 @@
 import twisted
 from dockerdns.resolver import DockerResolver
 from dockerdns.mappings import DockerMapping
-from test.docker_dns_test import check_deferred
 from test import mock_lookup_container, SRV_FMT
 from nose import SkipTest
 from nose.tools import raises
 from nose.twistedtools import deferred as nosedeferred
+from test.test_resolver import check_deferred
 
 
 class TestSrv(object):
