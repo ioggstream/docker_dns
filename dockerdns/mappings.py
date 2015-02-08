@@ -80,12 +80,12 @@ class DockerMapping(object):
             log.err("Not a multihost search: %r" % (name_multi,))
             return
         return tuple(
-                    (container['NetworkSettings']['IPAddress'], container['Name'][1:])
-                     for container
+                    (container['NetworkSettings'][
+                     'IPAddress'], container['Name'][1:])
+            for container
                      in self.db.get_by_image(name_multi)
                      if 'NetworkSettings' in container
-                 )
-
+        )
 
     def get_nat(self, container_name, sport=0, sproto=None):
         """ @return - a generator of natted maps (local, proto, nat, ip)

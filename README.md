@@ -5,8 +5,13 @@ Docker DNS
 A simple Twisted DNS server using custom TLD and Docker Event interface as the back end for IP
 resolution.
 
+Containers can be found by: 
+ - container name
+ - hostname
+ - image name
+
 To look up a container:
- - 'A' record query a container NAME that will match a container with a docker inspect
+ - 'A' record: query a container NAME that will match a container with a docker inspect
    command with '.docker' as the TLD. eg: mysql_server1.docker
  - 'SRV' record query exposing the NAT informations
 
@@ -15,16 +20,21 @@ Install/Run
 
 Just install from requirements (in a virtualenv if you'd like)
 
-    pip install -r requirements.txt --use-mirrors
+    pip install -r requirements.txt 
 
 That's it! To run, remember that you may need to set user/group ids on 
 the process
 
 
-    sudo twistd -gdocker -y docker_dns.py
+    sudo twistd -gdocker -y dockerdns  -p 53
 
 This will start a DNS server on port 53 (default DNS port). To make this
 useful, you probably want to combine it with your regular DNS in something like Dnsmasq.
+
+You can get configuration parameters with
+    
+    sudo twistd dockerdns --help
+
 
 Examples
 --------

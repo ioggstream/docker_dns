@@ -19,6 +19,7 @@ from twisted.names.error import DNSQueryTimeoutError, DomainError
 from twisted.python import log
 from dockerdns.mappings import DockerMapping
 from dockerdns.resolver import DockerResolver, NO_NXDOMAIN
+from test.test_events import create_mock_db2, create_mock_db
 
 
 # FIXME I can not believe how disgusting this is
@@ -138,7 +139,6 @@ class MockDockerClient(object):
 class DockerResolverTest(unittest.TestCase):
     def setUp(self):
         self.CONFIG = {}
-        from test.test_events import create_mock_db2
 
         self.db = create_mock_db2()
         self.mapping = DockerMapping(self.db)
@@ -155,12 +155,14 @@ class DockerResolverTest(unittest.TestCase):
     # TEST _a_records
     #
     def test__a_records_hostname(self):
-        name, expected_record = 'sneaky-foxes', {'name': 'sneaky-foxes.docker', 'type': dns.A}
+        name, expected_record = 'sneaky-foxes', {'name':
+                                                 'sneaky-foxes.docker', 'type': dns.A}
         rec = self.harn_expected(name, expected_record)
         self.assertEqual(rec.payload.dottedQuad(), '8.8.8.8')
 
     def test__a_records_id(self):
-        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A}
+        name, expected_record = 'cidpandas', {'name':
+                                              'cidpandas.docker', 'type': dns.A}
         rec = self.harn_expected(name, expected_record)
         self.assertEqual(rec.payload.dottedQuad(), '127.0.0.1')
 
@@ -186,12 +188,14 @@ class DockerResolverTest(unittest.TestCase):
         )
 
     def test__a_records_authoritative(self):
-        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A, 'auth': True}
+        name, expected_record = 'cidpandas', {'name':
+                                              'cidpandas.docker', 'type': dns.A, 'auth': True}
         self.resolver.config['authoritative'] = True
         self.harn_expected(name, expected_record)
 
     def test__a_records_non_authoritative(self):
-        name, expected_record = 'cidpandas', {'name': 'cidpandas.docker', 'type': dns.A, 'auth': False}
+        name, expected_record = 'cidpandas', {'name':
+                                              'cidpandas.docker', 'type': dns.A, 'auth': False}
         self.resolver.config['authoritative'] = False
         self.harn_expected(name, expected_record)
 
@@ -268,6 +272,47 @@ class DockerResolverTest(unittest.TestCase):
                 rec,
                 **expected_record
             ))
+
+
+class DockerResolver2Test(unittest.TestCase):
+    def setUp(self):
+        self.CONFIG = {}
+
+        self.db = create_mock_db()
+        self.mapping = DockerMapping(self.db)
+        self.resolver = DockerResolver(self.mapping)
+
+    def harn_expected(self, name, expected_record):
+        rec = self.resolver._a_records(name)
+        self.assertEqual(len(rec), 1)
+        rec = rec[0]
+        self.assertTrue(check_record(rec, **expected_record))
+        return rec
+
+    def test_lookupAddress_multi(self):
+        # search by image
+        # host -t a impandas.*.docker
+        #
+        expected_records = (
+            {'name': 'jboss631.docker'},
+            #            {'name': 'cidpandas0.docker'}
+        )
+        self.resolver.config[NO_NXDOMAIN] = False
+
+        # retrieve hosts by image
+        deferred = self.resolver.lookupAddress('eap63_tracer:v6.3.1.*.docker')
+        result = check_deferred(deferred, True)
+        self.assertNotEqual(result, False)
+
+        response_rr, authority_rr, additional_rr = result
+        self.assertEqual(len(response_rr), len(expected_records))
+
+        for rec, expected_record in zip(response_rr, expected_records):
+            self.assertTrue(check_record(
+                rec,
+                **expected_record
+            ))
+
 
 def main():
     unittest.main()
