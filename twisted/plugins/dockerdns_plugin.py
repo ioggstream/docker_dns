@@ -23,7 +23,7 @@ from twisted.application import internet, service
 from twisted.names import dns, server
 from twisted.python import log
 from zope.interface import implements
-
+import json
 from twisted.python import usage
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker
@@ -37,24 +37,6 @@ from dockerdns.resolver import DockerResolver
 import docker
 
 
-# Merge user config over defaults
-CONFIG = DEFAULT_CONFIG = {
-    'docker_url': 'unix://var/run/docker.sock',
-    'version': '1.13',
-    'bind_interface': '',
-    'bind_port': 53,
-    'bind_protocols': ['tcp', 'udp'],
-    'no_nxdomain': True,
-    'authoritative': True,
-    'domain': 'docker'
-}
-
-# Load the config
-try:
-    from config import CONFIG as appcfg  # pylint:disable=no-name-in-module,import-error
-    CONFIG.update(appcfg)
-except ImportError:
-    appcfg = {}
 
 
 class Options(usage.Options):
@@ -62,7 +44,12 @@ class Options(usage.Options):
         ["bind_port", "p", 10053, "The port number to listen on."],
         ["bind_interface", "h", "127.0.0.1", "The host address to bind to"],
         ["domain", "d", "docker", "The default domain"],
-        ["config", "c", "docker_dns.json", "Configuration file"],
+        ["config", "c", "dockerdns.json", "Configuration file"],
+        ["docker_url", "u", 'unix://var/run/docker.sock', "Docker URL"],
+        ['no_nxdomain', "x", True, "Return SERVFAIL instead of NXDOMAIN if container not found"],
+        ["authoritative", "A", True, "Return authoritative replies"],
+        ['version', "v",  '1.13', "Docker API version"],
+        ['bind_protocols', "B", ['tcp', 'udp'], "Bind protocols"]
     ]
 
 
@@ -81,11 +68,20 @@ class MyServiceMaker(object):
         """
         Set everything up
         """
+        try:
+            with open(options['config']) as fh:
+                appcfg = json.load(fh)
+                appcfg = {k: v for k, v in appcfg.items() if k[0] is not '#'}
+        except IOError as e:
+            if options['config'] != "dockerdns.json":
+                raise
+            log.err("File {config} not found. Using default values".format(options))
+
         # Update config stuff with command line params
-        CONFIG.update(options)
-        log.err("config: %r" % CONFIG)
+        appcfg.update(options)
+        log.err("config: %r" % appcfg)
         # Create docker: by default dict.get returns None on missing keys
-        docker_client = docker.Client(CONFIG.get('docker_url'))
+        docker_client = docker.Client(appcfg.get('docker_url'))
         infos = docker_client.info()
         # Test docker connectivity before starting
         log.msg("Connecting to docker instance: %r" % infos)
@@ -93,7 +89,7 @@ class MyServiceMaker(object):
         db = DockerDB(api=docker_client)
         # Create our custom mapping and resolver
         mapping = DockerMapping(db=db)
-        resolver = DockerResolver(mapping, config=CONFIG)
+        resolver = DockerResolver(mapping, config=appcfg)
 
         # Create twistd stuff to tie in our custom components
         factory = server.DNSServerFactory(clients=[resolver])
@@ -101,11 +97,11 @@ class MyServiceMaker(object):
 
         # Protocols to bind
         bind_list = []
-        if 'tcp' in CONFIG['bind_protocols']:
+        if 'tcp' in appcfg['bind_protocols']:
             bind_list.append(
                 (internet.TCPServer, factory))  # noqa pylint:disable=no-member
 
-        if 'udp' in CONFIG['bind_protocols']:
+        if 'udp' in appcfg['bind_protocols']:
             proto = dns.DNSDatagramProtocol(factory)
             proto.noisy = False
             bind_list.append(
@@ -115,17 +111,17 @@ class MyServiceMaker(object):
         ret = service.MultiService()
         for (InternetServerKlass, arg) in bind_list:
             svc = InternetServerKlass(
-                int(CONFIG['bind_port']),
+                int(appcfg['bind_port']),
                 arg,
-                interface=CONFIG['bind_interface']
+                interface=appcfg['bind_interface']
             )
             svc.setServiceParent(ret)
 
         # Add the event Loop
         from dockerdns.events import EventFactory
         from urlparse import urlparse
-        u = urlparse(CONFIG['docker_url'])
-        efactory = EventFactory(config=CONFIG, db=db)
+        u = urlparse(appcfg['docker_url'])
+        efactory = EventFactory(config=appcfg, db=db)
         docker_event_monitor = internet.TCPClient(u.hostname, u.port, efactory)
         docker_event_monitor.setServiceParent(ret)
 
