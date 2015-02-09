@@ -1,3 +1,6 @@
+import docker
+import fudge
+
 __author__ = 'rpolli'
 
 inspect_container_pandas_0 = {
@@ -174,3 +177,68 @@ mock_lookup_container = lambda *a, **k: {
 }
 
 SRV_FMT = "_{svc}._{proto}.{container}.docker TTL {cclass} SRV {priority} {weight} {port} {target}"
+
+
+class MockDockerClient(object):
+    base_url = 'http://localhost:5000'
+    version = lambda x: {'ApiVersion': '1.0'}
+    inspect_container_pandas = {
+        'ID': 'cidpandaslong',
+        'Same': 'Value',
+        'Config': {
+            'Hostname': 'cuddly-pandas',
+        },
+        'NetworkSettings': {
+            'IPAddress': '127.0.0.1'
+        },
+    }
+    inspect_container_foxes = {
+        'ID': 'cidfoxeslong',
+        'Same': 'Value',
+        'Config': {
+            'Hostname': 'sneaky-foxes',
+        },
+        'NetworkSettings': {
+            'IPAddress': '8.8.8.8'
+        }
+    }
+    inspect_container_sloths = {
+        'ID': 'cidslothslong',
+        'Config': {
+            'Hostname': 'stopped-sloths',
+        },
+        'NetworkSettings': {
+            'IPAddress': ''
+        }
+    }
+    inspect_container_returns = {
+        'cidpandas': inspect_container_pandas,
+        'cidpandaslong': inspect_container_pandas,
+        'cidfoxes': inspect_container_foxes,
+        'cidfoxeslong': inspect_container_foxes,
+        'cidsloths': inspect_container_sloths,
+        'cidslothslong': inspect_container_sloths,
+    }
+    containers_return = [
+        {'Id': 'cidpandas'},
+        {'Id': 'cidfoxes'},
+        {'Id': 'cidsloths'},
+    ]
+
+    inspect_container_id = None
+
+    def inspect_container(self, cid):
+        self.inspect_container_id = cid
+
+        try:
+            return self.inspect_container_returns[cid]
+        except KeyError:
+            # Mocks a Docker Client Exception
+            response = fudge.Fake()
+            response.has_attr(status_code=404, content='PANDAS!')
+
+            exception = docker.client.APIError('bad', response)
+            raise exception
+
+    def containers(self, *args, **kwargs):  # pylint:disable=unused-argument
+        return self.containers_return
