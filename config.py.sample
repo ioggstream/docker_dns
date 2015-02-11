@@ -1,8 +1,0 @@
-"""
-Configuration for Docker DNS server.
-
-Author: Ricky Cook <ricky@infoxchange.net.au>
-"""
-
-CONFIG = {
-}

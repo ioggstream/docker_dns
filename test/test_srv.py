@@ -37,7 +37,6 @@ class TestSrv(object):
 
             yield self.check_equals, port, pout, "unexpected value in %r" % ret
 
-
     @raises(twisted.names.error.DomainError)
     @nosedeferred()
     def harn_lookupService_ko(self, n):

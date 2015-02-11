@@ -1,38 +1,49 @@
 Docker DNS
 ==========
-[![Build Status](https://travis-ci.org/infoxchange/docker_dns.png?branch=master)](https://travis-ci.org/infoxchange/docker_dns)
 
 A simple Twisted DNS server using custom TLD and Docker Event interface as the back end for IP
 resolution.
 
+Containers can be found by: 
+ - container name
+ - hostname
+ - image name
+
 To look up a container:
- - 'A' record query a container NAME that will match a container with a docker inspect
+ - 'A' record: query a container NAME that will match a container with a docker inspect
    command with '.docker' as the TLD. eg: mysql_server1.docker
  - 'SRV' record query exposing the NAT informations
+
+Note: This fork of docker_dns requires *always* to specify the TLD (by default .docker)
 
 Install/Run
 -----------
 
 Just install from requirements (in a virtualenv if you'd like)
 
-    pip install -r requirements.txt --use-mirrors
+    pip install -r requirements.txt 
 
 That's it! To run, remember that you may need to set user/group ids on 
 the process
 
 
-    sudo twistd -gdocker -y docker_dns.py
+    sudo twistd -gdocker -y dockerdns  -p 53
 
 This will start a DNS server on port 53 (default DNS port). To make this
 useful, you probably want to combine it with your regular DNS in something like Dnsmasq.
+
+You can get configuration parameters with
+    
+    sudo twistd dockerdns --help
+
 
 Examples
 --------
 Dig output is shortened for brevity. We have Docker containers like this:
 
-    ID                  IMAGE               COMMAND             CREATED             STATUS              PORTS
-    26ed50b1bf59        ubuntu:12.04        /bin/bash           4 seconds ago       Up 4 seconds
-    0949efde23bf        ubuntu:12.04        /bin/bash           18 hours ago        Up 18 hours
+    ID                  IMAGE             STATUS              Names
+    26ed50b1bf59        ubuntu:12.04      Up 1 hour           sad_turing
+    0949efde23bf        ubuntu:12.04      Up 18 hours         happy_bohr
 
 0949efde23bf has:
 
@@ -46,36 +57,22 @@ Dig output is shortened for brevity. We have Docker containers like this:
  - IP: 172.17.0.3
  - Hostname: my-thing
 
-Container IDs are variable length. You use the same input as the Docker `inspect` command, so they can be long:
+Search by Hostname
+    dig +short 26ed50b1bf59.docker
+    172.17.0.2
 
-    dig 0949efde23bf017.docker
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 51840
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+Search by Names (works only the first Name)
+    dig +short sad_turing.docker
+    172.17.0.2
 
-    ;; ANSWER SECTION:
-    0949efde23bf017.docker. 10  IN  A   172.17.0.2
+Search by Hostname
+    dig +short my-thing.docker
+    172.17.0.3
 
+Search by Names (works only the first Name)
+    dig +short happy_bohr.docker
+    172.17.0.3
 
-Or they can be short:
-
-    dig 0949.docker
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42797
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
-
-    ;; ANSWER SECTION:
-    0949.docker.		10	IN	A	172.17.0.2
-
-And the other container:
-
-    dig 26ed50b1bf59.docker
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 25901
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
-
-    ;; ANSWER SECTION:
-    26ed50b1bf59.docker.	10	IN	A	172.17.0.3
 
 When a container doesn't exist, no answer is given:
 
@@ -84,34 +81,11 @@ When a container doesn't exist, no answer is given:
     ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 24269
     ;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
 
-You can look up by hostname by removing the .docker TLD:
+You can search by image, like skydock:
 
-    dig 0949efde23bf
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 61822
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
-
-    ;; ANSWER SECTION:
-    0949efde23bf.		10	IN	A	172.17.0.2
-
-Here's a manually defined hostname:
-
-    dig my-thing
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 3355
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
-
-    ;; ANSWER SECTION:
-    my-thing.		10	IN	A	172.17.0.3
-
-And the host name that would have been automatically assigned for the above
-container:
-
-    dig 26ed50b1bf59
-    ;; Got answer:
-    ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 12687
-    ;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0
-
+    dig +short ubuntu.*.docker
+    172.17.0.2
+    172.17.0.3
 
 Nat discovery: you can discover natted ports with queries like this one
 
@@ -121,27 +95,23 @@ Nat discovery: you can discover natted ports with queries like this one
 
 Configuration
 -------------
-Config is done in the `config.py` file. There's a skeleton in
-`config.py.sample`. Below are the default config values. Currently,
+Config is done in the `dockerdns.json` file. There's a skeleton in
+`dockerdns.json.sample`. Below are the default config values. Currently,
 configuration is rather limited.
 
-    CONFIG = {
-        # URL to connect to the Docker API. docker-py defaults to
-        # unix://var/run/docker.sock
+    {
+        "#": "# URL to connect to the Docker API. docker-py defaults to unix://var/run/docker.sock",
         'docker_url': None
 
-        # socket.bind defaults to 0.0.0.0
+        "#": "# socket.bind defaults to 0.0.0.0",
         'bind_interface': '',
         'bind_port': 53,
         'bind_protocols': ['tcp', 'udp'],
 
-        # When the request matches no docker container, we should return
-        # NXDOMAIN, however the OS interprets this as "doesn't exist anywhere"
-        # so things like google.com fail. This will return SERVFAIL rather than
-        # NXDOMAIN so secondary DNS is used
+        "#": "Return SERVFAIL instead of NXDOMAIN if no matching container found"
         'no_nxdomain': True,
 
-        # Makes successful requests authoritative
+        "#": "Makes successful requests authoritative",
         'authoritative': True,
     }
 

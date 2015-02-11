@@ -9,6 +9,7 @@ from twisted.test.proto_helpers import MemoryReactor
 
 from nose import SkipTest
 
+
 def create_mock_db():
     """Create a mock DockerDB"""
     api = docker.Client()
@@ -40,13 +41,15 @@ def test_init():
 def test_init_and_get_images():
     db = create_mock_db2()
     # images are correctly added to the indexes
-    assert 'impandas' in db.mappings_image, "%r, %r" % (db.mappings_image, db.mappings)
-    assert 'cidpandas' in db.mappings_image['impandas'], "%r, %r" % (db.mappings_image, db.mappings)
+    assert 'impandas' in db.mappings_image, "%r, %r" % (
+        db.mappings_image, db.mappings)
+    assert 'cidpandas' in db.mappings_image['impandas'], "%r, %r" % (
+        db.mappings_image, db.mappings)
 
     # images are correctly retrieved
     pandas_container = [x['Id'] for x in db.get_by_image('impandas')]
-    assert set(pandas_container) == set(('cidpandas', 'cidpandas0')), pandas_container
-
+    assert set(pandas_container) == set(
+        ('cidpandas', 'cidpandas0')), pandas_container
 
 
 class MockAgent(Agent):
@@ -58,6 +61,7 @@ class MockAgent(Agent):
         d.addCallback(lambda *args: "ciao")
         return d
 
+
 class TestEventManager(object):
     def setup(self):
         self.config = dict(docker_url='http://localhost:5000')
@@ -66,12 +70,14 @@ class TestEventManager(object):
         self.http_agent = MockAgent(self.reactor)
 
     def test_delete_record(self):
-        em = EventManager(http_agent=self.http_agent, config=self.config, db=self.db)
+        em = EventManager(
+            http_agent=self.http_agent, config=self.config, db=self.db)
         assert em
         em.delete_record({'status': 'stop', 'id': '7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4'})
 
     @SkipTest
     def test_update_record(self):
-        em = EventManager(http_agent=self.http_agent, config=self.config, db=self.db)
+        em = EventManager(
+            http_agent=self.http_agent, config=self.config, db=self.db)
         resp = yield em.update_record({'status': 'start', 'id': '7d564ceb891bb0b2997210936392c1b893e4e438b4fae5b874aa7b5e6137f0d4'})
         assert resp

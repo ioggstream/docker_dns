@@ -45,10 +45,15 @@ class DockerDB(object):
 
         name = item['Name'][1:]
         hostname = item['Config']['Hostname']
+        image = item['Config']['Image']
         self.mappings_name.update({name: item['Id']})
         self.mappings_hostname.update({hostname: item['Id']})
         self.mappings.update({item['Id']: item})
-        self.mappings_image.setdefault(item['Config']['Image'], []).append(name)
+        image_notag = image[:image.find(":")]
+        self.mappings_image.setdefault(
+            image_notag, []).append(item['Id'])
+        self.mappings_image.setdefault(
+            image, []).append(item['Id'])
 
     def add_container(self, item):
         self.updatedb(item)
@@ -57,7 +62,11 @@ class DockerDB(object):
         name = self.mappings[cid]['Name'][1:]
         image = self.mappings[cid]['Config']['Image']
         hostname = self.mappings[cid]['Config']['Hostname']
-        self.mappings_image.get(image, []).remove(name)
+        image_notag = image[:image.find(":")]
+        self.mappings_image.get(image_notag, []).remove(cid)
+        self.mappings_image.get(image, []).remove(cid)
+
+
         del self.mappings[cid]
         del self.mappings_name[name]
         del self.mappings_hostname[hostname]

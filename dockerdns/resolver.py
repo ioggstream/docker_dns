@@ -22,8 +22,8 @@ class DockerResolver(common.ResolverBase):
         dns.Record_SRV(
             priority=100, weight=100, port=19999, target='name', ttl=None),
         auth=True),
-                    dns.RRHeader(
-                        "mock_name", dns.SRV, dns.IN, 86400,
+        dns.RRHeader(
+            "mock_name", dns.SRV, dns.IN, 86400,
                         dns.Record_SRV(
                             priority=100, weight=100, port=18080, target='name', ttl=None),
                         auth=True)
@@ -35,8 +35,8 @@ class DockerResolver(common.ResolverBase):
         """
 
         self.mapping = mapping
-        self.config = config or {}
-
+        self.config = config or {'domain': 'docker'}
+        self.re_domain = re.compile(r'\.' + self.config['domain'] + '$')
         # Change to this ASAP when Twisted uses object base
         # super(DockerResolver, self).__init__()
         common.ResolverBase.__init__(self)
@@ -48,7 +48,8 @@ class DockerResolver(common.ResolverBase):
         # socket.
         import socket
 
-        self.authority = [dns.RRHeader(name="docker.", type=dns.NS, cls=dns.IN,
+        self.authority = [dns.RRHeader(
+            name=self.config['domain'] + ".", type=dns.NS, cls=dns.IN,
                                        payload=dns.Record_NS(
                                            name=socket.gethostname())
         )]
@@ -71,7 +72,9 @@ class DockerResolver(common.ResolverBase):
             raise DomainError(name)
 
         return tuple([
-            dns.RRHeader('.'.join((name, 'docker')), dns.A, dns.IN, self.ttl,
+            dns.RRHeader(
+                '.'.join(
+                    (name, self.config['domain'])), dns.A, dns.IN, self.ttl,
                          dns.Record_A(addr, self.ttl),
                          auth=self.config.get('authoritative'))
         ])
@@ -80,7 +83,9 @@ class DockerResolver(common.ResolverBase):
         print("getting srv: %r" + name)
         addr = self.mapping.get_a(name)
         return tuple([
-            dns.RRHeader('.'.join((name, 'docker')), dns.SRV, dns.IN, self.ttl,
+            dns.RRHeader(
+                '.'.join(
+                    (name, self.config['domain'])), dns.SRV, dns.IN, self.ttl,
                          dns.Record_A(addr, self.ttl),
                          auth=self.config.get('authoritative'))
         ])
@@ -88,30 +93,36 @@ class DockerResolver(common.ResolverBase):
     def lookupAddress(self, name, timeout=None):
         """
 
-        :param name:
+        :param name: a name like container_name.docker, hostname.docker, image_name.*.docker
         :param timeout:
         :return: A deferred firing a 3-tuple
-                      The first element of the tuple gives answers.
+                    The first element of the tuple gives answers.
                     The second element of the tuple gives authorities.
                     The third element of the tuple gives additional information.
                     The Deferred may instead fail with one of the exceptions defined in twisted.names.error
                     or with NotImplementedError. (type: Deferred)
 
         """
-        name, occurrences = re.subn(r'.docker$', '', name)
+        name, occurrences = self.re_domain.subn('', name)
         if not occurrences:
-            log.err("Domain not ending with .docker: %r" % name)
+            log.err("Domain not ending with {domain}: {name}".format(
+                name=name, **self.config))
             return defer.fail(failure.Failure(DomainError("not ending with docker")))
 
         try:
             if name.endswith(".*"):
+                a_multi = self.mapping.get_a_multi(name)
+                log.msg(a_multi)
                 records = tuple(
-                    dns.RRHeader('.'.join((name_, 'docker')), dns.A, dns.IN, self.ttl,
+                    dns.RRHeader(
+                        '.'.join((name_, self.config[
+                                 'domain'])), dns.A, dns.IN, self.ttl,
                                  dns.Record_A(addr_, self.ttl),
                                  auth=self.config.get('authoritative')
-                                )
+                    )
                     for addr_, name_
-                    in self.mapping.get_a_multi(name)
+                    in a_multi
+                    if addr_ and name_  # skip empty entries
                 )
             else:
                 records = self._a_records(name)
@@ -152,10 +163,11 @@ class DockerResolver(common.ResolverBase):
                   The third element of the tuple gives additional information.
                   The Deferred may instead fail with one of the exceptions defined in twisted.names.error or with NotImplementedError. (type: Deferred)
         """
-        name, occurrences = re.subn(r'.docker$', '', name)
+        name, occurrences = self.re_domain.subn('', name)
         if not occurrences:
-            log.err("Domain not ending with .docker: %r" % name)
-            return defer.fail(failure.Failure(DomainError("not ending with docker")))
+            log.err("Domain not ending with {domain}: {name}".format(
+                name=name, **self.config))
+            return defer.fail(failure.Failure(DomainError("not ending with {domain}".format(**self.config))))
         try:
             port, proto, container = name.split(".")
             port = int(port.strip("_"))
@@ -168,7 +180,7 @@ class DockerResolver(common.ResolverBase):
             dns.Record_SRV(
                 priority=100, weight=100, port=c_nat_port, target=self.my_preferred_ip_ptr_value, ttl=None),
             auth=True)
-                   for c_port, protocol, c_nat_port, target
+            for c_port, protocol, c_nat_port, target
                    in self.mapping.get_nat(container)
                    if c_port == port  # eventually filter
         ]

@@ -1,0 +1,16 @@
+{
+        "#": "# URL to connect to the Docker API. docker-py defaults to unix://var/run/docker.sock",
+        'docker_url': None,
+
+        "#": "# socket.bind defaults to 0.0.0.0",
+        'bind_interface': '',
+        'bind_port': 53,
+        'bind_protocols': ['tcp', 'udp'],
+
+        "#": "Return SERVFAIL instead of NXDOMAIN if no matching container found",
+        'no_nxdomain': True,
+
+        "#": "Makes successful requests authoritative",
+        'authoritative': True,
+}
+
