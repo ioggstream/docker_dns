@@ -132,8 +132,6 @@ class EventManager(Protocol):
         self.config = config
         self.db = db
 
-        self.remaining = 1024 * 10
-        self.buff = ""
         # Create an container_manager for parsing updates
         self.container_manager = ContainerManager(Deferred(), db=db)
 
@@ -158,16 +156,14 @@ class EventManager(Protocol):
     def dataReceived(self, bytes_):
         """Get the container id and calls the updater"""
         try:
-            if self.remaining:
-                display = bytes_[:self.remaining]
-                print('Some data received:', display)
-                self.remaining -= len(display)
-                item = json.loads(display)
-                print("Parsed: %r" % item)
-                if item['status'] == 'start':
-                    self.update_record(item)
-                elif item['status'] in ('stop', 'die'):
-                    self.delete_record(item)
+            display = bytes_
+            print('Some data received:', display)
+            item = json.loads(display)
+            print("Parsed: %r" % item)
+            if item['status'] == 'start':
+                self.update_record(item)
+            elif item['status'] in ('stop', 'die'):
+                self.delete_record(item)
         except KeyError:
             log.err("Container not found")
         except json.scanner.JSONDecodeError:
