@@ -33,7 +33,7 @@ from twisted.application import internet
 from dockerdns.mappings import DockerMapping
 from dockerdns.events import DockerDB
 from dockerdns.resolver import DockerResolver
-
+from dockerdns.console import ConsoleFactory
 import docker
 
 
@@ -124,6 +124,11 @@ class MyServiceMaker(object):
         efactory = EventFactory(config=appcfg, db=db)
         docker_event_monitor = internet.TCPClient(u.hostname, u.port, efactory)
         docker_event_monitor.setServiceParent(ret)
+
+        # Add the console
+        consoleFactory = ConsoleFactory(db)
+        console = internet.TCPServer(8080, consoleFactory)
+        console.setServiceParent(ret)
 
         return ret
 
