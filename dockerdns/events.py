@@ -36,7 +36,7 @@ class DockerDB(object):
         self.mappings_hostname = {}
         #
         # Initialize db (TODO get initialization timestamp)
-        for c in self.api.containers(all=True):
+        for c in self.api.containers(all=False):
             item = self.api.inspect_container(c['Id'])
             self.updatedb(item)
 

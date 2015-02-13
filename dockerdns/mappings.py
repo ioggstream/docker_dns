@@ -32,14 +32,14 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
-        for search_f in (self.db.get_by_name, self.db.get_by_hostname):
+        for map_name, search_f in (('name', self.db.get_by_name), ('hostname', self.db.get_by_hostname)):
             try:
-                log.msg('lookup container: %r' % name)
+                log.msg('lookup container by %r: %r' % (map_name, name))
 
                 return search_f(name)
             except KeyError as e:
                 # warn(str(e))
-                log.msg("Container not found: %r" % name)
+                log.msg("Container %r not found: %r" % (map_name, name))
             except Exception as e:
                 log.err("Unmanaged error: %r" % e)
 
@@ -65,6 +65,7 @@ class DockerMapping(object):
         addr = container['NetworkSettings']['IPAddress']
 
         if not addr:
+            log.msg("No IPAddress associated with container %r" % container)
             return None
 
         return addr

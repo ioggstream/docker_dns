@@ -21,21 +21,25 @@ Install/Run
 
 Just install from requirements (in a virtualenv if you'd like)
 
-    pip install -r requirements.txt 
+    #pip install -r requirements.txt 
 
 That's it! To run, remember that you may need to set user/group ids on 
 the process
 
 
-    sudo twistd -gdocker -y dockerdns  -p 53
+    #sudo twistd -gdocker -y dockerdns  -p 53
 
 This will start a DNS server on port 53 (default DNS port). To make this
 useful, you probably want to combine it with your regular DNS in something like Dnsmasq.
 
 You can get configuration parameters with
     
-    sudo twistd dockerdns --help
+    #sudo twistd dockerdns --help
 
+
+There's a simple HTTP console to check the internal mappings. You can curl it with
+
+    #curl -v http://localhost:8080/{hostname,image,name,id,ping}/{optional_key}
 
 Examples
 --------

@@ -21,6 +21,20 @@ class RestConsole(Resource):
         assert isinstance(db, DockerDB)
         self.db = db
 
+    def dump(self, table, k=None):
+        """
+        Return a value from a given mapping of DB. This should be moved to DockerDB
+        """
+        try:
+            d = getattr(self.db, 'mappings_' + table if table != "id" else "mappings" )
+        except AttributeError:
+            return "Table not found %r" % table
+
+        if k:
+            return d[k]
+        
+        return d
+
     def render_GET(self, request):
         """
 
@@ -30,17 +44,15 @@ class RestConsole(Resource):
         """
         serialize = lambda x: simplejson.dumps(x, indent=True)
         assert isinstance(request, Request)
+        r = request.path.strip("/").split("/")
+        action = r[0]
+        
+	
         if 'ping' in request.path:
-            return "<html><body>%s</body></html>" % (time.ctime(),)
-        elif 'hostname/' in request.path:
-            return serialize(self.db.mappings_hostname)
-        elif 'image/' in request.path:
-            return serialize(self.db.mappings_image)
-        elif 'dump/' in request.path:
-            return serialize(self.db.mappings)
-        else:
-            return serialize(dict(error='command not found',
-                                  msg='try http://localhost:8080/{hostname,image,dump}/'))
+            return "<html><body>%s</body></html>" % [time.ctime(), request.path]
+
+        return serialize(self.dump(action, *r[1:]))
+        #    return serialize(dict(error='command not found', msg='try http://localhost:8080/{hostname,image,dump}/'))
 
 class ConsoleFactory(Site):
     def __init__(self, db):
