@@ -48,7 +48,7 @@ class Options(usage.Options):
         ["docker_url", "u", 'unix://var/run/docker.sock', "Docker URL"],
         ['no_nxdomain', "x", True, "Return SERVFAIL instead of NXDOMAIN if container not found"],
         ["authoritative", "A", True, "Return authoritative replies"],
-        ['version', "v",  '1.13', "Docker API version"],
+        ['version', "v",  '1.15', "Docker API version"],
         ['bind_protocols', "B", ['tcp', 'udp'], "Bind protocols"]
     ]
 
@@ -75,13 +75,14 @@ class MyServiceMaker(object):
         except IOError as e:
             if options['config'] != "dockerdns.json":
                 raise
-            log.err("File {config} not found. Using default values".format(options))
+            log.err("File {config} not found. Using default values".format(**options))
+            appcfg = {}
 
         # Update config stuff with command line params
         appcfg.update(options)
         log.err("config: %r" % appcfg)
         # Create docker: by default dict.get returns None on missing keys
-        docker_client = docker.Client(appcfg.get('docker_url'))
+        docker_client = docker.Client(appcfg.get('docker_url'), version=appcfg.get('version'))
         infos = docker_client.info()
         # Test docker connectivity before starting
         log.msg("Connecting to docker instance: %r" % infos)

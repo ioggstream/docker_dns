@@ -118,7 +118,7 @@ class ContainerManager(Protocol):
             self.db.updatedb(item)
 
     def connectionLost(self, reason):
-        self.onLost.callback(None)
+        Deferred().callback(None)
 
 
 class EventManager(Protocol):
