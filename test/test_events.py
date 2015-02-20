@@ -51,6 +51,24 @@ def test_init_and_get_images():
     assert set(pandas_container) == set(
         ('cidpandas', 'cidpandas0')), pandas_container
 
+def test_clean_db():
+    db = create_mock_db2()
+    db.cleandb()
+    assert not db.mappings, "Mappings not clean"
+    assert not db.mappings_name, "Mappings not clean"
+    assert not db.mappings_hostname, "Mappings not clean"
+    assert not db.mappings_image, "Mappings not clean"
+
+def test_reload_container():
+    db = create_mock_db2()
+    db.mappings = {}
+    db.load_containers()
+    assert db.mappings
+    assert 'impandas' in db.mappings_image, "%r, %r" % (
+        db.mappings_image, db.mappings)
+
+    
+    
 
 class MockAgent(Agent):
     reasons = ['No Reason']

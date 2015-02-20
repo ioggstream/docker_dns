@@ -35,6 +35,15 @@ class DockerDB(object):
         self.mappings_image = {}
         self.mappings_hostname = {}
         #
+        self.load_containers()
+
+    def cleandb(self):
+        self.mappings = {}
+        self.mappings_name = {}
+        self.mappings_image = {}
+        self.mappings_hostname = {}
+
+    def load_containers(self):
         # Initialize db (TODO get initialization timestamp)
         for c in self.api.containers(all=False):
             item = self.api.inspect_container(c['Id'])

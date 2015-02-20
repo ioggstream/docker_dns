@@ -47,12 +47,38 @@ class RestConsole(Resource):
         r = request.path.strip("/").split("/")
         action = r[0]
         
-	
         if 'ping' in request.path:
             return "<html><body>%s</body></html>" % [time.ctime(), request.path]
+        if action == 'help':
+            return """
+Allowed commands:
+
+Retrieve container names \t\t\tcurl 'http://localhost:8080/name'
+Retrieve container hostnames \t\t\tcurl 'http://localhost:8080/hostname'
+Retrieve container ids\t\t\tcurl 'http://localhost:8080/id'
+Refresh dns mapping\t\t\tcurl -XPOST 'http://localhost:8080/refresh'
+
+"""
 
         return serialize(self.dump(action, *r[1:]))
-        #    return serialize(dict(error='command not found', msg='try http://localhost:8080/{hostname,image,dump}/'))
+
+    def render_POST(self, request):
+        """
+
+        :param request:
+        :type twisted.web.http.Request
+        :return:
+        """
+        serialize = lambda x: simplejson.dumps(x, indent=True)
+        assert isinstance(request, Request)
+        r = request.path.strip("/").split("/")
+        action = r[0]
+
+        if action == 'refresh':
+            db.cleanup()
+            db.load_container()
+            return serialize(dict(status="ok",action="refresh"))
+        raise ValueError("Not Found")
 
 class ConsoleFactory(Site):
     def __init__(self, db):
