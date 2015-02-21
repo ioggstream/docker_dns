@@ -26,13 +26,14 @@ class RestConsole(Resource):
         Return a value from a given mapping of DB. This should be moved to DockerDB
         """
         try:
-            d = getattr(self.db, 'mappings_' + table if table != "id" else "mappings" )
+            d = getattr(self.db, 'mappings_' +
+                        table if table != "id" else "mappings")
         except AttributeError:
             return "Table not found %r" % table
 
         if k:
             return d[k]
-        
+
         return d
 
     def render_GET(self, request):
@@ -46,7 +47,7 @@ class RestConsole(Resource):
         assert isinstance(request, Request)
         r = request.path.strip("/").split("/")
         action = r[0]
-        
+
         if 'ping' in request.path:
             return "<html><body>%s</body></html>" % [time.ctime(), request.path]
         if action == 'help':
@@ -77,10 +78,10 @@ Refresh dns mapping\t\t\tcurl -XPOST 'http://localhost:8080/refresh'
         if action == 'refresh':
             db.cleanup()
             db.load_container()
-            return serialize(dict(status="ok",action="refresh"))
+            return serialize(dict(status="ok", action="refresh"))
         raise ValueError("Not Found")
+
 
 class ConsoleFactory(Site):
     def __init__(self, db):
         Site.__init__(self, RestConsole(db))
-

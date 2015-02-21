@@ -75,7 +75,6 @@ class DockerDB(object):
         self.mappings_image.get(image_notag, []).remove(cid)
         self.mappings_image.get(image, []).remove(cid)
 
-
         del self.mappings[cid]
         del self.mappings_name[name]
         del self.mappings_hostname[hostname]

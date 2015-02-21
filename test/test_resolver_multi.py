@@ -22,6 +22,7 @@ from test.test_resolver import check_record, in_generator, check_deferred
 
 from nose.tools import *
 
+
 class TestDockerResolver(object):
     def setup(self):
         self.CONFIG = {}
@@ -62,7 +63,8 @@ class TestDockerResolver(object):
             {'name': 'jboss631.docker'},
             #            {'name': 'cidpandas0.docker'}
         )
-        self.harn_lookupAddress_multi('eap63_tracer:v6.3.1.*.docker', expected_records)
+        self.harn_lookupAddress_multi(
+            'eap63_tracer:v6.3.1.*.docker', expected_records)
 
     def test_lookupAddress_multi_notag(self):
         self.resolver.config[NO_NXDOMAIN] = False
@@ -70,7 +72,5 @@ class TestDockerResolver(object):
             {'name': 'jboss631.docker'},
             #            {'name': 'cidpandas0.docker'}
         )
-        self.harn_lookupAddress_multi('eap63_tracer.*.docker', expected_records)
-
-
-
+        self.harn_lookupAddress_multi(
+            'eap63_tracer.*.docker', expected_records)

@@ -20,6 +20,8 @@ from test.test_events import create_mock_db2
 from nose.tools import *
 
 # FIXME I can not believe how disgusting this is
+
+
 def in_generator(gen, val):
     return reduce(
         lambda old, new: old or new == val,
@@ -105,7 +107,6 @@ class TestDockerResolver(object):
     @raises(DomainError)
     def test__a_records_invalid(self):
         self.resolver._a_records('invalid.docker')
-
 
     @raises(DomainError)
     def test__a_records_blank_query(self):
@@ -196,7 +197,3 @@ class TestDockerResolver(object):
                 rec,
                 **expected_record
             ))
-
-
-
-
