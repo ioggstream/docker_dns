@@ -1,16 +1,15 @@
-from __future__ import print_function
-
 """
     Populate dns database getting info from docker via:
         - docker-py api
         - docker events interface
 """
+from __future__ import print_function
+from os.path import join as pjoin
+from logging import DEBUG
+import simplejson as json
 from twisted.internet import reactor
 from twisted.web.client import Agent, HTTPConnectionPool
 from twisted.web.http_headers import Headers
-from os.path import join as pjoin
-import simplejson as json
-from twisted.internet.defer import Deferred
 from twisted.internet.protocol import Protocol, ReconnectingClientFactory
 from twisted.python import log
 
@@ -114,19 +113,15 @@ class ContainerManager(Protocol):
         updating the network infos associated to the container
     """
 
-    def __init__(self, onLost, db):
+    def __init__(self, db):
         """Initialize the Docker host database"""
-        self.onLost = onLost
         self.db = db
 
     def dataReceived(self, bytes_):
         if bytes_:
             item = json.loads(bytes_)
-            print("Get container %r" % item)
+            log.msg("Get container %r" % item)
             self.db.updatedb(item)
-
-    def connectionLost(self, reason):
-        Deferred().callback(None)
 
 
 class EventManager(Protocol):
@@ -141,7 +136,7 @@ class EventManager(Protocol):
         self.db = db
 
         # Create an container_manager for parsing updates
-        self.container_manager = ContainerManager(Deferred(), db=db)
+        self.container_manager = ContainerManager(db=db)
 
     def update_record(self, item):
         """Update docker mapping
@@ -165,9 +160,9 @@ class EventManager(Protocol):
         """Get the container id and calls the updater"""
         try:
             display = bytes_
-            print('Some data received:', display)
+            log.msg('Some data received:', display)
             item = json.loads(display)
-            print("Parsed: %r" % item)
+            log.msg("Parsed: %r" % item)
             if item['status'] == 'start':
                 self.update_record(item)
             elif item['status'] in ('stop', 'die'):
@@ -176,12 +171,8 @@ class EventManager(Protocol):
             log.err("Container not found")
         except json.scanner.JSONDecodeError:
             log.err("Error reading data")
-        except Exception as e:
-            log.err("Generic Error %r" % e)
-
-    def connectionLost(self, reason):
-        print('Finished receiving body:', reason.type, reason.value)
-        Deferred().callback(None)
+        except Exception as ex:
+            log.err("Generic Error %r" % ex)
 
 
 class EventFactory(ReconnectingClientFactory):
@@ -204,7 +195,7 @@ class EventFactory(ReconnectingClientFactory):
         #
         # Create a protocol handler to parse docker container data
         #
-        self.dockerUpdater = EventManager(
+        self.update_event_manager = EventManager(
             http_agent=self.agent2, config=config, db=db)
 
         # Populate existing containers (this is ok to be blocking)
@@ -212,23 +203,22 @@ class EventFactory(ReconnectingClientFactory):
         #
         # Poll to the docker event interface
         #
-        d = self.agent.request(
+        deferred = self.agent.request(
             'GET',
             pjoin(config['docker_url'], 'events'),
             Headers({'User-Agent': ['Twisted Web Client for Docker Event'],
                      'Content-Type': ['application/json']}),
             None)
-        d.addCallbacks(self.cbResponse, lambda failure: print(str(failure)))
+        deferred.addCallbacks(self.cbResponse, lambda failure: log.msg(str(failure), logLevel=DEBUG))
 
     def cbResponse(self, response):
         """Manages the response using a Protocol class defined in __init__"""
         try:
             log.msg('Response received: %r' % response)
-            finished = Deferred()
-            response.deliverBody(self.dockerUpdater)
-        except:
+            response.deliverBody(self.update_event_manager)
+        except Exception as ex:
             log.err()
 
     def buildProtocol(self, addr):
         log.msg("addr: %r" % addr)
-        return self.dockerUpdater
+        return self.update_event_manager

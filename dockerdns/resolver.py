@@ -1,3 +1,11 @@
+"""
+author: robipolli@gmail.com
+
+Extending twisted.names.common.ResolverBase to
+reply with the informations provided by
+dockerdns.mappings.DockerMapping
+
+"""
 import re
 from twisted.python import log
 from twisted.internet import defer
@@ -7,10 +15,10 @@ from twisted.names.error import DomainError, DNSQueryTimeoutError
 from dockerdns.utils import get_preferred_ip
 
 
-# pylint:disable=too-many-public-methods
 NO_NXDOMAIN = 'no_nxdomain'
 
-
+# pylint:disable=too-many-public-methods
+# pylint:disable=too-many-instance-attributes
 class DockerResolver(common.ResolverBase):
     """
     DNS resolver to resolve queries with a DockerMapping instance.
@@ -130,13 +138,13 @@ class DockerResolver(common.ResolverBase):
 
         # We need to catch everything. Uncaught exceptions will make the server
         # stop responding
-        except DomainError as e:
-            log.msg("DomainError: %r " % e)
+        except DomainError as ex:
+            log.msg("DomainError: %r " % ex)
             if self.config.get(NO_NXDOMAIN):
                 # FIXME surely there's a better way to give SERVFAIL
-                e = DNSQueryTimeoutError(name)
-            return defer.fail(failure.Failure(e))
-        except Exception as e:  # pylint:disable=bare-except
+                ex = DNSQueryTimeoutError(name)
+            return defer.fail(failure.Failure(ex))
+        except Exception as ex:  # pylint:disable=bare-except
             import traceback
 
             traceback.print_exc()
@@ -171,7 +179,7 @@ class DockerResolver(common.ResolverBase):
         try:
             port, proto, container = name.split(".")
             port = int(port.strip("_"))
-        except (IndexError, TypeError, ValueError) as e:
+        except (IndexError, TypeError, ValueError) as ex:
             log.err("Domain not of the right form: %r" % name)
             return defer.fail(failure.Failure(DomainError("not of the right form")))
 
@@ -181,7 +189,7 @@ class DockerResolver(common.ResolverBase):
                 priority=100, weight=100, port=c_nat_port, target=self.my_preferred_ip_ptr_value, ttl=None),
             auth=True)
             for c_port, protocol, c_nat_port, target
-                   in self.mapping.get_nat(container)
-                   if c_port == port  # eventually filter
+            in self.mapping.get_nat(container)
+            if c_port == port  # eventually filter
         ]
         return defer.succeed((records, self.authority, self.additional))

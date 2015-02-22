@@ -106,7 +106,7 @@ class DockerMapping(object):
 
         try:
             nats = container['NetworkSettings']['Ports'].items()
-        except (KeyError, AttributeError) as e:
+        except (KeyError, AttributeError) as ex:
             # container infos set and not None
             log.err("Bad network information for container: %r" % container)
 
@@ -126,6 +126,6 @@ class DockerMapping(object):
             for r in remote:
                 try:
                     yield (port, proto, int(r['HostPort']), r['HostIp'])
-                except (ValueError, KeyError) as e:
+                except (ValueError, KeyError) as ex:
                     log.err()
                     continue

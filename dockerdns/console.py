@@ -1,12 +1,27 @@
 """
+    author: robipolli@gmail.com
     Management Console
 """
 from twisted.web.server import Site
 from twisted.web.resource import Resource
 from twisted.web.http import Request
-from events import DockerDB
+from dockerdns.events import DockerDB
 import simplejson
 import time
+
+HELP_STR = """
+Allowed commands:
+
+Retrieve container names \t\t\tcurl 'http://localhost:8080/name'
+Retrieve container hostnames \t\t\tcurl 'http://localhost:8080/hostname'
+Retrieve container ids\t\t\tcurl 'http://localhost:8080/id'
+Refresh dns mapping\t\t\tcurl -XPOST 'http://localhost:8080/refresh'
+
+"""
+
+
+def serialize(item):
+    return simplejson.dumps(item, indent=True)
 
 
 class RestConsole(Resource):
@@ -20,6 +35,7 @@ class RestConsole(Resource):
         """
         assert isinstance(db, DockerDB)
         self.db = db
+        Resource.__init__(self)
 
     def dump(self, table, k=None):
         """
@@ -43,25 +59,16 @@ class RestConsole(Resource):
         :type twisted.web.http.Request
         :return:
         """
-        serialize = lambda x: simplejson.dumps(x, indent=True)
         assert isinstance(request, Request)
-        r = request.path.strip("/").split("/")
-        action = r[0]
+        rpath = request.path.strip("/").split("/")
+        action = rpath[0]
 
         if 'ping' in request.path:
             return "<html><body>%s</body></html>" % [time.ctime(), request.path]
         if action == 'help':
-            return """
-Allowed commands:
+            return HELP_STR
 
-Retrieve container names \t\t\tcurl 'http://localhost:8080/name'
-Retrieve container hostnames \t\t\tcurl 'http://localhost:8080/hostname'
-Retrieve container ids\t\t\tcurl 'http://localhost:8080/id'
-Refresh dns mapping\t\t\tcurl -XPOST 'http://localhost:8080/refresh'
-
-"""
-
-        return serialize(self.dump(action, *r[1:]))
+        return serialize(self.dump(action, *rpath[1:]))
 
     def render_POST(self, request):
         """
@@ -70,14 +77,13 @@ Refresh dns mapping\t\t\tcurl -XPOST 'http://localhost:8080/refresh'
         :type twisted.web.http.Request
         :return:
         """
-        serialize = lambda x: simplejson.dumps(x, indent=True)
         assert isinstance(request, Request)
-        r = request.path.strip("/").split("/")
-        action = r[0]
+        rpath = request.path.strip("/").split("/")
+        action = rpath[0]
 
         if action == 'refresh':
-            db.cleanup()
-            db.load_container()
+            self.db.cleanup()
+            self.db.load_container()
             return serialize(dict(status="ok", action="refresh"))
         raise ValueError("Not Found")
 
