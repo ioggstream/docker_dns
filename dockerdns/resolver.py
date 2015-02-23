@@ -10,7 +10,7 @@ import re
 import socket
 from twisted.python import log
 from twisted.internet import defer
-from twisted.internet.defer.failure import Failure
+from twisted.internet.defer import failure
 from twisted.names import common, dns
 from twisted.names.error import DomainError, DNSQueryTimeoutError
 from dockerdns.utils import get_preferred_ip
@@ -119,7 +119,9 @@ class DockerResolver(common.ResolverBase):
         if not occurrences:
             log.err("Domain not ending with {domain}: {name}".format(
                 name=name, **self.config))
-            return defer.fail(Failure(DomainError("not ending with docker")))
+            return defer.fail(failure.Failure(
+                DomainError("not ending with docker"))
+            )
 
         try:
             if name.endswith(".*"):
@@ -147,7 +149,7 @@ class DockerResolver(common.ResolverBase):
             if self.config.get(NO_NXDOMAIN):
                 # FIXME surely there's a better way to give SERVFAIL
                 ex = DNSQueryTimeoutError(name)
-            return defer.fail(Failure(ex))
+            return defer.fail(failure.Failure(ex))
         except Exception as ex:  # pylint:disable=bare-except
             import traceback
 
@@ -160,7 +162,7 @@ class DockerResolver(common.ResolverBase):
             else:
                 exception = DomainError(name)
 
-            return defer.fail(Failure(exception))
+            return defer.fail(failure.Failure(exception))
 
     def lookupService(self, name, timeout=None):
         """ Lookup a docker natted service of
@@ -182,7 +184,7 @@ class DockerResolver(common.ResolverBase):
         if not occurrences:
             log.err("Domain not ending with {domain}: {name}".format(
                 name=name, **self.config))
-            return defer.fail(Failure(DomainError(
+            return defer.fail(failure.Failure(DomainError(
                 "not ending with {domain}".format(**self.config)))
             )
         try:
@@ -190,7 +192,9 @@ class DockerResolver(common.ResolverBase):
             port = int(port.strip("_"))
         except (IndexError, TypeError, ValueError) as ex:
             log.err("Domain not of the right form: %r" % name)
-            return defer.fail(Failure(DomainError("not of the right form")))
+            return defer.fail(failure.Failure(
+                DomainError("not of the right form"))
+            )
 
         records = [dns.RRHeader(
             name, dns.SRV, dns.IN, self.ttl,
