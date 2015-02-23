@@ -203,13 +203,14 @@ class EventFactory(ReconnectingClientFactory):
         #
         # Poll to the docker event interface
         #
-        deferred = self.agent.request(
+        d = self.agent.request(
             'GET',
             pjoin(config['docker_url'], 'events'),
             Headers({'User-Agent': ['Twisted Web Client for Docker Event'],
                      'Content-Type': ['application/json']}),
             None)
-        deferred.addCallbacks(self.cbResponse, lambda failure: log.msg(str(failure), logLevel=DEBUG))
+        d.addCallbacks(self.cbResponse,
+                       lambda failure: log.msg(str(failure), logLevel=DEBUG))
 
     def cbResponse(self, response):
         """Manages the response using a Protocol class defined in __init__"""

@@ -25,8 +25,8 @@ def traverse_tree(haystack, key_path, default=None):
     :param key_path: An iterable containing an ordered list of dict keys to
                   traverse
     :param default: Value to return in case nothing is found
-    :return:Value of the dict at the nested location given, or default if no value
-        was found
+    :return:Value of the dict at the nested location given,
+        or default if no value was found
     """
     for k in key_path:
         if k in haystack:

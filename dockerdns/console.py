@@ -39,7 +39,8 @@ class RestConsole(Resource):
 
     def dump(self, table, k=None):
         """
-        Return a value from a given mapping of DB. This should be moved to DockerDB
+        Return a value from a given mapping of DB.
+        TODO This should be moved to DockerDB
         """
         try:
             d = getattr(self.db, 'mappings_' +
@@ -64,7 +65,8 @@ class RestConsole(Resource):
         action = rpath[0]
 
         if 'ping' in request.path:
-            return "<html><body>%s</body></html>" % [time.ctime(), request.path]
+            return "<html><body>{0:s}</body></html>".format([
+                time.ctime(), request.path])
         if action == 'help':
             return HELP_STR
 
@@ -82,8 +84,8 @@ class RestConsole(Resource):
         action = rpath[0]
 
         if action == 'refresh':
-            self.db.cleanup()
-            self.db.load_container()
+            self.db.cleandb()
+            self.db.load_containers()
             return serialize(dict(status="ok", action="refresh"))
         raise ValueError("Not Found")
 

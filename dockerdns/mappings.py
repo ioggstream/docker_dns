@@ -32,7 +32,8 @@ class DockerMapping(object):
         Returns:
             Container config dict for the first matching container
         """
-        for map_name, search_f in (('name', self.db.get_by_name), ('hostname', self.db.get_by_hostname)):
+        for map_name, search_f in (('name', self.db.get_by_name),
+                                   ('hostname', self.db.get_by_hostname)):
             try:
                 log.msg('lookup container by %r: %r' % (map_name, name))
 
@@ -84,8 +85,8 @@ class DockerMapping(object):
                     (container['NetworkSettings'][
                      'IPAddress'], container['Name'][1:])
             for container
-                     in self.db.get_by_image(name_multi)
-                     if 'NetworkSettings' in container
+            in self.db.get_by_image(name_multi)
+            if 'NetworkSettings' in container
         )
 
     def get_nat(self, container_name, sport=0, sproto=None):

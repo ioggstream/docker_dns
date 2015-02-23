@@ -1,16 +1,16 @@
 #!/usr/bin/python
-#from __future__ import print_function, unicode_literals
 """
 A simple TwistD DNS server using custom TLD and Docker as the back end for IP
 resolution.
 
 To look up a container:
- - 'A' record query a container NAME that will match a container with a docker inspect
-   command with '.d' as the TLD. eg: mysql_server1.d
- - 'SRV' record query to _port._srv.container.docker will return the natted address.
-   eg. _3306._tcp.mysql_server1.docker returns
-   _18080._tcp.compassionate_poincare.docker. 10 IN SRV 100 100 8080 192.168.42.126.
-
+ - 'A' record query a container NAME that will match
+        a container with a docker inspect
+        command with '.d' as the TLD. eg: mysql_server1.d
+ - 'SRV' record query to _port._srv.container.docker will return
+        the natted address.
+    eg. _3306._tcp.mysql_server1.docker returns
+   _18080._tcp.nice_bohr.docker. 10 IN SRV 100 100 8080 192.168.42.126.
 
 Code modified from
 https://github.com/infoxchange/docker_dns
@@ -18,23 +18,23 @@ https://github.com/infoxchange/docker_dns
 Author: Bradley Cicenas <bradley@townsquaredigital.com>
 Author: Roberto Polli <robipolli@gmail.com>
 """
+from __future__ import print_function, unicode_literals
 
-from twisted.application import internet, service
-from twisted.names import dns, server
-from twisted.python import log
 from zope.interface import implements
 import json
+
+from twisted.application import service, internet
+from twisted.names import dns, server
+from twisted.python import log
 from twisted.python import usage
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker
-from twisted.application import internet
-
+import docker
 
 from dockerdns.mappings import DockerMapping
 from dockerdns.events import DockerDB
 from dockerdns.resolver import DockerResolver
 from dockerdns.console import ConsoleFactory
-import docker
 
 
 class Options(usage.Options):
