@@ -6,6 +6,6 @@ install:
   - sudo pip install -r test_requirements.txt 
 before_script:
   - pep8 dockerdns/*.py twisted/plugins/*py
-  - pylint --rcfile=pylint.conf  dockerdns/*.py twisted/plugins/*py
+#  - pylint --rcfile=pylint.conf  dockerdns/*.py twisted/plugins/*py
 script:
   - nosetests -v -w test
