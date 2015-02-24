@@ -2,6 +2,8 @@
     Populate dns database getting info from docker via:
         - docker-py api
         - docker events interface
+
+    XXX Not using unicode_literals in Twisted
 """
 from __future__ import print_function
 from os.path import join as pjoin
@@ -43,7 +45,6 @@ class DockerDB(object):
         self.mappings_image = {}
         self.mappings_hostname = {}
         self.mappings_ip = {}
-
 
     def load_containers(self):
         # Initialize db (TODO get initialization timestamp)
@@ -127,7 +128,6 @@ class DockerDB(object):
         if cid not in self.mappings:
             raise KeyError("%r not in %r" % (cid, self.mappings.keys()))
         return self.mappings[cid]
-
 
 
 class ContainerManager(Protocol):
@@ -227,7 +227,7 @@ class EventFactory(ReconnectingClientFactory):
         #
         d = self.agent.request(
             'GET',
-            pjoin(config['docker_url'], 'events'),
+            pjoin(config['docker_url'].encode(), 'events'.encode()),
             Headers({'User-Agent': ['Twisted Web Client for Docker Event'],
                      'Content-Type': ['application/json']}),
             None)

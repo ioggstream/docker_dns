@@ -102,7 +102,7 @@ class DockerResolver(common.ResolverBase):
                 auth=self.config.get('authoritative'))
         ])
 
-    def _a_ptr(self, name):
+    def _ptr_record(self, name):
         """
         Get PTR records from a query name
 
@@ -115,7 +115,7 @@ class DockerResolver(common.ResolverBase):
         addr = self.mapping.get_ptr(ip_addr)
         if not addr:
             raise DomainError(name)
-        addr = '.'.join(name, self.config['domain'])
+        addr = '.'.join((addr, self.config['domain']))
         return tuple([
             dns.RRHeader(
                 name,

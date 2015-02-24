@@ -122,11 +122,16 @@ class MyServiceMaker(object):
         # Add the event Loop
         from dockerdns.events import EventFactory
         from urlparse import urlparse
-        u = urlparse(appcfg['docker_url'])
-        efactory = EventFactory(config=appcfg, db=db)
-        docker_event_monitor = internet.TCPClient(u.hostname, u.port, efactory)
-        docker_event_monitor.setServiceParent(ret)
-
+        if appcfg['docker_url'].startswith("http"):
+            u = urlparse(appcfg['docker_url'])
+            efactory = EventFactory(config=appcfg, db=db)
+            docker_event_monitor = internet.TCPClient(
+                u.hostname, u.port, efactory)
+            docker_event_monitor.setServiceParent(ret)
+        else:
+            log.err("Cannot load the Event interface: "
+                    "requires an http endpoint, "
+                    "not {docker_url}".format(**appcfg))
         # Add the console
         consoleFactory = ConsoleFactory(db)
         console = internet.TCPServer(8080, consoleFactory)

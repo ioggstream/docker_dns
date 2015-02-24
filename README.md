@@ -5,16 +5,24 @@ A simple Twisted DNS server using custom TLD and Docker Event interface as the b
 resolution.
 
 Containers can be found by: 
+ - image name
  - container name
  - hostname
- - image name
+ - ip
 
-To look up a container:
- - 'A' record: query a container NAME that will match a container with a docker inspect
+eg: here are some examples
+
+    #host busybox.*.docker        # search all busybox containers
+    #host 26ed50b1bf59.docker     # search a container by hostname (not by ID!)
+    #host nice_bohr.docker        # search a container by name
+
+You can lookup different records:
+ - 'A' record: query a container NAME or HOSTNAME that will match a container with a docker inspect
    command with '.docker' as the TLD. eg: mysql_server1.docker
- - 'SRV' record query exposing the NAT informations
+ - 'SRV' record query exposing the NAT informations (more to come!)
+ - 'PTR' record, with reverse pointer
 
-Note: This fork of docker_dns requires *always* to specify the TLD (by default .docker)
+Note: This fork of docker_dns  *always* requires to query using a TLD (by default .docker)
 
 Install/Run
 -----------
@@ -39,7 +47,7 @@ You can get configuration parameters with
 
 There's a simple HTTP console to check the internal mappings. You can curl it with
 
-    #curl -v http://localhost:8080/{hostname,image,name,id,ping}/{optional_key}
+    #curl -v http://localhost:8080/{hostname,image,name,id,ping,help,ip}/{optional_key}
 
 Examples
 --------
@@ -61,20 +69,20 @@ Dig output is shortened for brevity. We have Docker containers like this:
  - IP: 172.17.0.3
  - Hostname: my-thing
 
-Search by Hostname
-    dig +short 26ed50b1bf59.docker
+Search by Hostname (uses default or explicit hostname)
+
+    #dig +short 26ed50b1bf59.docker
     172.17.0.2
 
-Search by Names (works only the first Name)
-    dig +short sad_turing.docker
-    172.17.0.2
-
-Search by Hostname
-    dig +short my-thing.docker
+    #dig +short my-thing.docker
     172.17.0.3
 
 Search by Names (works only the first Name)
-    dig +short happy_bohr.docker
+
+    #dig +short sad_turing.docker
+    172.17.0.2
+
+    #dig +short happy_bohr.docker
     172.17.0.3
 
 

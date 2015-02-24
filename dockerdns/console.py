@@ -67,7 +67,7 @@ class RestConsole(Resource):
         if 'ping' in request.path:
             return "<html><body>{0:s}</body></html>".format([
                 time.ctime(), request.path])
-        if action == 'help':
+        if action in ('help', 'refresh'):
             return HELP_STR
 
         return serialize(self.dump(action, *rpath[1:]))

@@ -130,9 +130,9 @@ class DockerMapping(object):
 
     def get_ptr(self, ip):
         """
-        Return the Container with a given IP
+        Return the Hostname of the Container with the given IP
         :param ip:
         :return:
         """
         c = self.db.get_by_ip(ip)
-        return c['Name']
+        return c['Config']['Hostname']

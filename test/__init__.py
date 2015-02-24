@@ -172,5 +172,6 @@ mock_lookup_container = lambda *a, **k: {
     u'Volumes': {u'/mnt/tmp': u'/home/rpolli/Downloads'},
     u'VolumesRW': {u'/mnt/tmp': True}
 }
+mock_get_ptr = lambda *a, **k: mock_lookup_container()['Name'][1:]
 
 SRV_FMT = "_{svc}._{proto}.{container}.docker TTL {cclass} SRV {priority} {weight} {port} {target}"

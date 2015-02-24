@@ -80,6 +80,11 @@ class TestSrv(object):
                   )
                   )
 
+    def test_setup(self):
+        assert self.resolver
+        assert self.resolver.mapping
+        assert self.resolver.mapping.db is None
+
     @SkipTest
     def test_service_image(self):
         host = "impandas.docker"
