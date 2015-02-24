@@ -43,11 +43,14 @@ class DockerResolver(common.ResolverBase):
     def __init__(self, mapping, config=None):
         """
         :param mapping: DockerMapping instance for lookups
+
+        TODO: configurable --bip
         """
 
         self.mapping = mapping
-        self.config = config or {'domain': 'docker'}
+        self.config = config or {'domain': 'docker', 'bip': '172.17.0.0/16'}
         self.re_domain = re.compile(r'\.' + self.config['domain'] + '$')
+        self.re_ptr = re.compile(r'[0-9]+\.[0-9]+\.17\.172\.in-addr\.arpa$')
         # Change to this ASAP when Twisted uses object base
         # super(DockerResolver, self).__init__()
         common.ResolverBase.__init__(self)
@@ -96,6 +99,28 @@ class DockerResolver(common.ResolverBase):
                 '.'.join((name, self.config['domain'])),
                 dns.SRV, dns.IN, self.ttl,
                 dns.Record_A(addr, self.ttl),
+                auth=self.config.get('authoritative'))
+        ])
+
+    def _a_ptr(self, name):
+        """
+        Get PTR records from a query name
+
+        :param name: DNS query name to look up
+
+        :return: Tuple of formatted DNS replies
+        """
+        # convert x.y.z.q.in-addr.arpa -> q.z.y.x
+        ip_addr = '.'.join(reversed(name.split(".")[:4]))
+        addr = self.mapping.get_ptr(ip_addr)
+        if not addr:
+            raise DomainError(name)
+        addr = '.'.join(name, self.config['domain'])
+        return tuple([
+            dns.RRHeader(
+                name,
+                dns.PTR, dns.IN, self.ttl,
+                payload=dns.Record_PTR(addr, self.ttl),
                 auth=self.config.get('authoritative'))
         ])
 
@@ -210,3 +235,45 @@ class DockerResolver(common.ResolverBase):
             if c_port == port  # eventually filter
         ]
         return defer.succeed((records, self.authority, self.additional))
+
+    def lookupPointer(self, name, timeout=None):
+        """
+
+        :param name: a ptr name like 1.0.17.172.in-addr.arpa
+        :param timeout:
+        :return: A deferred firing a 3-tuple
+                The first element of the tuple gives answers.
+                The second element of the tuple gives authorities.
+                The third element of the tuple gives additional information.
+                The Deferred may instead fail with one of the exceptions
+                defined in twisted.names.error or
+                with NotImplementedError.
+        :type: Deferred
+
+        """
+        if not self.re_ptr.match(name):
+            log.err("Domain not in docker network {bip}: {name}".format(
+                name=name, **self.config))
+            return defer.fail(failure.Failure(
+                DomainError("not in docker network"))
+            )
+
+        try:
+            records = self._ptr_record(name)
+            return defer.succeed((records, self.authority, self.additional))
+
+        # We need to catch everything. Uncaught exceptions will make the server
+        # stop responding
+        except DomainError as ex:
+            log.msg("DomainError: %r " % ex)
+        except Exception as ex:  # pylint:disable=bare-except
+            import traceback
+            traceback.print_exc()
+            ex = DomainError(name)
+        #
+        # With NO_NXDOMAIN we mask everything with a Timeout
+        #
+        if self.config.get(NO_NXDOMAIN):
+            # FIXME surely there's a better way to give SERVFAIL
+            ex = DNSQueryTimeoutError(name)
+        return defer.fail(failure.Failure(ex))

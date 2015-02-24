@@ -38,6 +38,18 @@ def test_init():
         raise
 
 
+def test_get_by_ip():
+    db = create_mock_db()
+    ret = db.get_by_ip('172.17.0.10')
+    assert ret, "Missing container"
+    try:
+        assert ret['NetworkSettings'][
+            'IPAddress'] == '172.17.0.10', "item %r" % ret
+    except KeyError as e:
+        log.err("Bad container %r" % ret)
+        raise
+
+
 def test_init_and_get_images():
     db = create_mock_db2()
     # images are correctly added to the indexes

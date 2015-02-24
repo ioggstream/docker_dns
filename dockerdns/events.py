@@ -33,6 +33,7 @@ class DockerDB(object):
         self.mappings_name = {}
         self.mappings_image = {}
         self.mappings_hostname = {}
+        self.mappings_ip = {}
         #
         self.load_containers()
 
@@ -41,6 +42,8 @@ class DockerDB(object):
         self.mappings_name = {}
         self.mappings_image = {}
         self.mappings_hostname = {}
+        self.mappings_ip = {}
+
 
     def load_containers(self):
         # Initialize db (TODO get initialization timestamp)
@@ -54,14 +57,17 @@ class DockerDB(object):
         name = item['Name'][1:]
         hostname = item['Config']['Hostname']
         image = item['Config']['Image']
-        self.mappings_name.update({name: item['Id']})
-        self.mappings_hostname.update({hostname: item['Id']})
-        self.mappings.update({item['Id']: item})
+        ip = item['NetworkSettings'].get('IPAddress')
+        id_ = item['Id']
+        self.mappings_name.update({name: id_})
+        self.mappings_hostname.update({hostname: id_})
+        self.mappings_ip.update({ip: id_})
+        self.mappings.update({id_: item})
         image_notag = image[:image.find(":")]
         self.mappings_image.setdefault(
-            image_notag, []).append(item['Id'])
+            image_notag, []).append(id_)
         self.mappings_image.setdefault(
-            image, []).append(item['Id'])
+            image, []).append(id_)
 
     def add_container(self, item):
         self.updatedb(item)
@@ -70,6 +76,7 @@ class DockerDB(object):
         name = self.mappings[cid]['Name'][1:]
         image = self.mappings[cid]['Config']['Image']
         hostname = self.mappings[cid]['Config']['Hostname']
+        ip = self.mappings[cid]['NetworkSettings']['IPAddress']
         image_notag = image[:image.find(":")]
         self.mappings_image.get(image_notag, []).remove(cid)
         self.mappings_image.get(image, []).remove(cid)
@@ -77,6 +84,7 @@ class DockerDB(object):
         del self.mappings[cid]
         del self.mappings_name[name]
         del self.mappings_hostname[hostname]
+        del self.mappings_ip[ip]
 
     def get_by_name(self, name):
         if name not in self.mappings_name:
@@ -106,6 +114,20 @@ class DockerDB(object):
             raise KeyError("%r not in %r" % (image, self.mappings_hostname))
         for cid in self.mappings_image[image]:
             yield self.mappings[cid]
+
+    def get_by_ip(self, ip):
+        """
+
+        :param ip:
+        :return: an generator of container dicts
+        """
+        if ip not in self.mappings_ip:
+            raise KeyError("%r not in %r" % (ip, self.mappings_ip))
+        cid = self.mappings_ip[ip]
+        if cid not in self.mappings:
+            raise KeyError("%r not in %r" % (cid, self.mappings.keys()))
+        return self.mappings[cid]
+
 
 
 class ContainerManager(Protocol):

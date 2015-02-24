@@ -50,11 +50,8 @@ class DockerMapping(object):
         """
         Get an IPv4 address from a query name to be used in A record lookups
 
-        Args:
-            name: DNS query name to look up
-
-        Returns:
-            IPv4 address for the query name given
+        :name: DNS query name to look up
+        :return: IPv4 address for the query name given
         """
 
         container = self.lookup_container(name)
@@ -71,21 +68,21 @@ class DockerMapping(object):
 
         return addr
 
-    def get_a_multi(self, name_multi):
+    def get_a_multi(self, image):
         """
-
-        :param name_multi: [(addr1, name1), .., (addrX, nameX)]
-        :return: a tuple of addresses
+        Return the IPs matching the given image name
+        :param image:
+        :return: a tuple of {(addr1, name1), .., (addrX, nameX)}
         """
-        name_multi, count = re.subn(r'\.\*$', '', name_multi, 1)
+        image, count = re.subn(r'\.\*$', '', image, 1)
         if not count:
-            log.err("Not a multihost search: %r" % (name_multi,))
+            log.err("Not a multihost search: %r" % (image,))
             return
         return tuple(
                     (container['NetworkSettings'][
                      'IPAddress'], container['Name'][1:])
             for container
-            in self.db.get_by_image(name_multi)
+            in self.db.get_by_image(image)
             if 'NetworkSettings' in container
         )
 
@@ -97,7 +94,7 @@ class DockerMapping(object):
 
             eg. [ (8080, 'tcp', 18080, '0.0.0.0'),
                   (8787, 'tcp', 8787, '0.0.0.0'),
-                ]
+                ]rfiutato
         """
         sport = int(sport)
         container = self.lookup_container(container_name)
@@ -130,3 +127,12 @@ class DockerMapping(object):
                 except (ValueError, KeyError) as ex:
                     log.err()
                     continue
+
+    def get_ptr(self, ip):
+        """
+        Return the Container with a given IP
+        :param ip:
+        :return:
+        """
+        c = self.db.get_by_ip(ip)
+        return c['Name']
