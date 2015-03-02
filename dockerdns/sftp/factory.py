@@ -7,7 +7,8 @@ Factory for reading openssh configuration files: public keys, private keys, and
 moduli file.
 """
 
-import os, errno
+import os
+import errno
 
 from twisted.python import log
 from twisted.python.util import runAsEffectiveUser
@@ -16,12 +17,10 @@ from twisted.conch.ssh import keys, factory, common
 from twisted.conch.openssh_compat import primes
 
 
-
 class OpenSSHFactory(factory.SSHFactory):
     dataRoot = '.'
-    moduliRoot = '.' # for openbsd which puts moduli in a different
-                                  # directory from keys
-
+    # for openbsd which puts moduli in a different directory from keys
+    moduliRoot = '.'
 
     def getPublicKeys(self):
         """
@@ -29,7 +28,7 @@ class OpenSSHFactory(factory.SSHFactory):
         """
         ks = {}
         for filename in os.listdir(self.dataRoot):
-            if filename[:9] == 'ssh_host_' and filename[-8:]=='_key.pub':
+            if filename[:9] == 'ssh_host_' and filename[-8:] == '_key.pub':
                 try:
                     k = keys.Key.fromFile(
                         os.path.join(self.dataRoot, filename))
@@ -39,21 +38,21 @@ class OpenSSHFactory(factory.SSHFactory):
                     log.msg('bad public key file %s: %s' % (filename, e))
         return ks
 
-
     def getPrivateKeys(self):
         """
         Return the server private keys.
         """
         privateKeys = {}
         for filename in os.listdir(self.dataRoot):
-            if filename[:9] == 'ssh_host_' and filename[-4:]=='_key':
+            if filename[:9] == 'ssh_host_' and filename[-4:] == '_key':
                 fullPath = os.path.join(self.dataRoot, filename)
                 try:
                     key = keys.Key.fromFile(fullPath)
                 except IOError, e:
                     if e.errno == errno.EACCES:
                         # Not allowed, let's switch to root
-                        key = runAsEffectiveUser(0, 0, keys.Key.fromFile, fullPath)
+                        key = runAsEffectiveUser(
+                            0, 0, keys.Key.fromFile, fullPath)
                         keyType = keys.objectType(key.keyObject)
                         privateKeys[keyType] = key
                     else:
@@ -64,7 +63,6 @@ class OpenSSHFactory(factory.SSHFactory):
                     keyType = keys.objectType(key.keyObject)
                     privateKeys[keyType] = key
         return privateKeys
-
 
     def getPrimes(self):
         try:

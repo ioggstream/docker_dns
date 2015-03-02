@@ -32,13 +32,15 @@ def test_server():
 
 
 def test_unixdirectory_1():
-    directory = unix.UnixSFTPDirectory(srv, '/')
+    directory = unix.DockerVolumeDirectory(srv, '/')
     assert_equal(set(directory.files), set(['shared', 'var', 'shared1']))
 
+
 def test_unixdir_2():
-    directory = unix.UnixSFTPDirectory(srv, '/var')
+    directory = unix.DockerVolumeDirectory(srv, '/var')
     assert_equal(set(directory.files), set(["log"]))
 
+
 def test_unixdir_3():
-    directory = unix.UnixSFTPDirectory(srv, '/var/log')
+    directory = unix.DockerVolumeDirectory(srv, '/var/log')
     assert_equal(set(directory.files), set(["sql"]))

@@ -8,6 +8,7 @@
 from __future__ import print_function
 from os.path import join as pjoin
 from logging import DEBUG
+import re
 import simplejson as json
 from twisted.internet import reactor
 from twisted.web.client import Agent, HTTPConnectionPool
@@ -19,6 +20,7 @@ from twisted.python import log
 class DockerDB(object):
     """Update docker ip store connecting via docker-py
     """
+    re_image = re.compile(r"([^/]+/)?([^:]+)(:[^:]+)?")
 
     def __init__(self, api=None):
         """
@@ -64,7 +66,7 @@ class DockerDB(object):
         self.mappings_hostname.update({hostname: id_})
         self.mappings_ip.update({ip: id_})
         self.mappings.update({id_: item})
-        image_notag = image[:image.find(":")]
+        _, image_notag, _ = DockerDB.re_image.match(image).groups()
         self.mappings_image.setdefault(
             image_notag, []).append(id_)
         self.mappings_image.setdefault(
@@ -78,7 +80,7 @@ class DockerDB(object):
         image = self.mappings[cid]['Config']['Image']
         hostname = self.mappings[cid]['Config']['Hostname']
         ip = self.mappings[cid]['NetworkSettings']['IPAddress']
-        image_notag = image[:image.find(":")]
+        _, image_notag, _ = DockerDB.re_image.match(image).groups()
         self.mappings_image.get(image_notag, []).remove(cid)
         self.mappings_image.get(image, []).remove(cid)
 
@@ -112,7 +114,8 @@ class DockerDB(object):
         :return: an generator of container dicts
         """
         if image not in self.mappings_image:
-            raise KeyError("%r not in %r" % (image, self.mappings_hostname))
+            log.err("%r not in %r" % (image, self.mappings_image))
+            return
         for cid in self.mappings_image[image]:
             yield self.mappings[cid]
 

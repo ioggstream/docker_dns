@@ -24,6 +24,7 @@ from zope.interface import implements
 import json
 
 from twisted.application import service, internet
+from twisted.cred.checkers import AllowAnonymousAccess
 from twisted.names import dns, server
 from twisted.python import log
 from twisted.python import usage
@@ -48,7 +49,13 @@ class Options(usage.Options):
             "Return SERVFAIL instead of NXDOMAIN if container not found"],
         ["authoritative", "A", True, "Return authoritative replies"],
         ["docker-version", "V",  '1.15', "Docker API version"],
-        ["bind_protocols", "B", ['tcp', 'udp'], "Bind protocols"]
+        ["bind_protocols", "B", ['tcp', 'udp'], "Bind protocols"],
+        ["sftp-bind", "S", "10022", "SFTP port to expose Volume access"
+                                    " eg. 10022. To specify an ip you can"
+                                    " use eg. 22:interface=127.0.0.1"],
+        ["sftp-keypath", "", "./", "Path to ssh_host_*key"],
+        ["sftp-moduli", "", None, "Path to moduli directory"]
+
     ]
 
 
@@ -62,6 +69,33 @@ class MyServiceMaker(object):
     tapname = "dockerdns"
     description = "Run this! It'll make your docker happy."
     options = Options
+
+    def sftpVolumeService(self, options, db):
+        """
+        Construct a service for operating a SSH server.
+
+        @param options: An L{Options} instance specifying server options,
+                    including where server keys are stored.
+
+        @param db: A L{DockerDB} instance with container information
+
+        @return: An L{IService} provider which contains the requested
+                    SSH server.
+        """
+        from dockerdns.sftp import factory
+        from dockerdns.sftp import unix, checkers as docker_checkers
+        from twisted.cred import portal
+        from twisted.application import strports
+        # The factory just sets the ssh keys
+        t = factory.OpenSSHFactory()
+
+        r = unix.DockerRealm(db)
+        t.portal = portal.Portal(r, [docker_checkers.PermitChecker()])
+        t.dataRoot = options['sftp-keypath']
+        t.moduliRoot = options['sftp-moduli'] or options['sftp-keypath']
+
+        port = options['sftp-bind']
+        return strports.service(port, t)
 
     def makeService(self, options):
         """
@@ -137,6 +171,9 @@ class MyServiceMaker(object):
         console = internet.TCPServer(8080, consoleFactory)
         console.setServiceParent(ret)
 
+        # sftp Volume
+        sftp_volumes = self.sftpVolumeService(options, db)
+        sftp_volumes.setServiceParent(ret)
         return ret
 
 

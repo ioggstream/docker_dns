@@ -82,6 +82,12 @@ def test_reload_container():
         db.mappings_image, db.mappings)
 
 
+def test_check_volumes():
+    db = create_mock_db()
+    ret = db.get_by_name('jboss631')
+    assert '/mnt/tmp' in ret['Volumes']
+
+
 class MockAgent(Agent):
     reasons = ['No Reason']
 
