@@ -67,10 +67,14 @@ class DockerDB(object):
         self.mappings_ip.update({ip: id_})
         self.mappings.update({id_: item})
         _, image_notag, _ = DockerDB.re_image.match(image).groups()
-        self.mappings_image.setdefault(
-            image_notag, []).append(id_)
-        self.mappings_image.setdefault(
-            image, []).append(id_)
+        l = self.mappings_image.setdefault(
+            image_notag, [])
+        if id_ not in l:
+            l.append(id_)
+        l = self.mappings_image.setdefault(
+            image, [])
+        if id_ not in l:
+            l.append(id_)
 
     def add_container(self, item):
         self.updatedb(item)

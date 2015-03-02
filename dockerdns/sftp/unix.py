@@ -130,26 +130,53 @@ class SFTPServerForDockerVolumeConchUser(SFTPServerForUnixConchUser):
     def __init__(self, avatar):
         SFTPServerForUnixConchUser.__init__(self,
                                             avatar)
+        self.allowed_volumes, self.allowed_paths = zip(
+            *self.avatar.volumes.items())
+
+    def _fits(self, volume, path):
+        should_empty, expected, rest = path.partition(volume)
+        if should_empty is not '':
+            return False
+        if expected is not volume:
+            return False
+        if rest == '':
+            return True
+        if rest[0] == '/':
+            return True
+        return False
+
+    def _best_fit(self, path):
+        """ Return the volume containing directory
+        """
+        matching_volumes = (
+            x
+            for x in self.allowed_volumes
+            if self._fits(x, path)
+        )
+        return sorted(matching_volumes, key=len, reverse=True)
 
     def _absPath(self, path):
-        import re
-
+        # You can only visit volumes
         allowed_paths = tuple(self.avatar.volumes.keys()) + (".", "/")
         home = self.avatar.getHomeDir()
+
         if path.startswith(allowed_paths):
             apath = os.path.abspath(os.path.join(home, path))
             if apath == "/":
                 return apath
-
-            for v, folder in self.avatar.volumes.items():
-                apath = re.sub('^' + v, folder, apath)
-            return apath
-
+            best_fit = self._best_fit(apath)
+            if best_fit:
+                volume = best_fit[0]
+                folder = self.avatar.volumes[volume]
+                log.msg("Volume: %r, %r" % (volume, folder))
+                apath = re.sub('^' + volume, folder, apath)
+                return apath
+        # By default you're not authorized
         log.msg("not outside container path: %r" % [
             path,
             self.avatar.volumes.keys()]
         )
-        os.stat("/dev/File not found")
+        raise OSError(2, "File not found: %r" % path, path)
 
     def openFile(self, filename, flags, attrs):
         return UnixSFTPFile(self, self._absPath(filename), flags, attrs)
@@ -185,8 +212,8 @@ class DockerVolumeDirectory(UnixSFTPDirectory):
                           in allowed_volumes
                           if x.startswith(directory)]
         else:
-            log.err("Accessing %r" % directory)
-            if not directory.startswith(tuple(allowed_paths)):
+            log.err("Accessing %r" % [directory])
+            if not directory.startswith(allowed_paths):
                 raise OSError(2, "No such file or directory", directory)
             self.files = server.avatar._runAsUser(os.listdir, directory)
         self.dir = directory
