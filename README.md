@@ -2,7 +2,7 @@ Docker DNS
 ==========
 
 A simple Twisted DNS server using custom TLD and Docker Event interface as the back end for IP
-resolution.
+resolution. As a plus you get a sperimental SFTP server to access Docker Volumes.
 
 Containers can be found by: 
  - image name
@@ -49,7 +49,7 @@ There's a simple HTTP console to check the internal mappings. You can curl it wi
 
     #curl -v http://localhost:8080/{hostname,image,name,id,ping,help,ip}/{optional_key}
 
-Examples
+DNS Examples
 --------
 Dig output is shortened for brevity. We have Docker containers like this:
 
@@ -104,6 +104,17 @@ Nat discovery: you can discover natted ports with queries like this one
     dig _8080._tcp.my-thing.docker srv
     ;; ANSWER SECTION:
     _8080._tcp.jboss631.docker. 10  IN      SRV     100 100 18080 192.168.204.17.
+
+
+SFTP Examples
+-------------
+To access the /myshare volume on the container jboss631, just:
+
+    #sftp -P10022 jboss631@localhost # empty password
+    #ls /
+    /myshare
+    
+
 
 Configuration
 -------------
