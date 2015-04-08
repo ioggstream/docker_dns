@@ -48,13 +48,17 @@ class DockerResolver(common.ResolverBase):
         """
 
         self.mapping = mapping
-        self.config = config or {'domain': 'docker', 'bip': '172.17.0.0/16'}
+        self.config = config or {
+            'domain': 'docker',
+            'bip': '172.17.0.0/16',
+            'ttl': 10
+        }
         self.re_domain = re.compile(r'\.' + self.config['domain'] + '$')
         self.re_ptr = re.compile(r'[0-9]+\.[0-9]+\.17\.172\.in-addr\.arpa$')
         # Change to this ASAP when Twisted uses object base
         # super(DockerResolver, self).__init__()
         common.ResolverBase.__init__(self)
-        self.ttl = 10
+        self.ttl = int(self.config['ttl'])
         self.my_preferred_ip, self.my_preferred_ip_ptr_value \
             = get_preferred_ip()
 
@@ -188,6 +192,59 @@ class DockerResolver(common.ResolverBase):
                 exception = DomainError(name)
 
             return defer.fail(failure.Failure(exception))
+
+    def lookupIPV6Address(self, name, timeout=None):
+        """
+
+        :param name: a name like container_name.docker, hostname.docker,
+                image_name.*.docker
+        :param timeout:
+        :return: A deferred firing a 3-tuple
+                The first element of the tuple gives answers.
+                The second element of the tuple gives authorities.
+                The third element of the tuple gives additional information.
+                The Deferred may instead fail with one of the exceptions
+                defined in twisted.names.error or
+                with NotImplementedError.
+        :type: Deferred
+
+        """
+        name, occurrences = self.re_domain.subn('', name)
+        if not occurrences:
+            log.err("Domain not ending with {domain}: {name}".format(
+                name=name, **self.config))
+            return defer.fail(failure.Failure(
+                DomainError("not ending with docker"))
+            )
+
+        # Raise exception if host not found
+        try:
+            records = self._a_records(name)
+
+        # We need to catch everything. Uncaught exceptions will make the server
+        # stop responding
+        except DomainError as ex:
+            log.msg("DomainError: %r " % ex)
+            if self.config.get(NO_NXDOMAIN):
+                # FIXME surely there's a better way to give SERVFAIL
+                ex = DNSQueryTimeoutError(name)
+            return defer.fail(failure.Failure(ex))
+        except Exception as ex:  # pylint:disable=bare-except
+            import traceback
+
+            traceback.print_exc()
+
+            if self.config.get(NO_NXDOMAIN):
+                log.err()
+                # FIXME surely there's a better way to give SERVFAIL
+                exception = DNSQueryTimeoutError(name)
+            else:
+                exception = DomainError(name)
+
+                return defer.fail(failure.Failure(exception))
+        # Otherwise no RR -> Answer RRs: 0
+        empty_record = tuple()
+        return defer.succeed((empty_record, self.authority, self.additional))
 
     def lookupService(self, name, timeout=None):
         """ Lookup a docker natted service of

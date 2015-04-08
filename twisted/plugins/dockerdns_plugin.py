@@ -48,6 +48,7 @@ class Options(usage.Options):
         ['no_nxdomain', "x", True,
             "Return SERVFAIL instead of NXDOMAIN if container not found"],
         ["authoritative", "A", True, "Return authoritative replies"],
+        ["ttl", "", 10, "The default TTL for those entries"],
         ["docker-version", "V",  '1.15', "Docker API version"],
         ["bind_protocols", "B", ['tcp', 'udp'], "Bind protocols"],
         ["sftp-bind", "S", "10022", "SFTP port to expose Volume access"
@@ -113,9 +114,11 @@ class MyServiceMaker(object):
             appcfg = {}
 
         # Update config stuff with command line params
-        appcfg.update(options)
+        options.update(appcfg)
+        appcfg = options
         log.err("config: %r" % appcfg)
         # Create docker: by default dict.get returns None on missing keys
+        #   TODO: we could source more than one docker server
         docker_client = docker.Client(
             appcfg.get('docker_url'), version=appcfg.get('docker-version'))
         infos = docker_client.info()
